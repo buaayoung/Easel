@@ -56,12 +56,34 @@ def _pip_chain(*pkgs: str, timeout: int = 1200) -> list[tuple]:
             ("pip 安装（清华镜像）", mirror, timeout)]
 
 
-WHISPER_MODEL_PY = (
-    "import os;os.environ.setdefault('HF_ENDPOINT','https://hf-mirror.com');"
-    "from huggingface_hub import snapshot_download;"
-    "print(snapshot_download('Systran/faster-whisper-large-v3',"
-    "local_dir=os.path.expanduser('~/models/whisper-large-v3')))"
-)
+def _whisper_model_dir() -> Path:
+    """Canonical Whisper large-v3 directory (honours EASEL_MODELS_DIR)."""
+    raw = (os.environ.get("EASEL_MODELS_DIR") or "").strip()
+    base = Path(raw).expanduser() if raw else Path.home() / "models"
+    return base / "whisper-large-v3"
+
+
+def _whisper_model_py() -> str:
+    dest = str(_whisper_model_dir()).replace("\\", "\\\\").replace("'", "\\'")
+    return (
+        "import os;os.environ.setdefault('HF_ENDPOINT','https://hf-mirror.com');"
+        "from huggingface_hub import snapshot_download;"
+        f"print(snapshot_download('Systran/faster-whisper-large-v3',"
+        f"local_dir=os.path.expanduser('{dest}')))"
+    )
+
+
+def _is_packaged() -> bool:
+    flag = (os.environ.get("EASEL_PACKAGED") or "").strip().lower()
+    if flag in ("1", "true", "yes", "on"):
+        return True
+    return bool((os.environ.get("EASEL_VENDOR_ROOT") or "").strip())
+
+
+# System-level installs blocked when packaged; expect vendor-bundled runtimes.
+_PACKAGED_BUILTIN_IDS = frozenset({"node", "ffmpeg", "python", "fw", "pylibs"})
+# Large / writable-dir assets still installable in packaged mode.
+_PACKAGED_ON_DEMAND_IDS = frozenset({"model", "rmdeps", "shell", "pw", "cft", "biliup"})
 
 
 def _pyfn_check_cft() -> tuple[bool, str]:
@@ -84,16 +106,21 @@ def _pyfn_check_cft() -> tuple[bool, str]:
 
 
 def _pyfn_check_model() -> tuple[bool, str]:
-    d = Path(os.path.expanduser("~/models/whisper-large-v3"))
-    if d.is_dir() and any(d.iterdir()):
-        return True, "模型目录已就绪"
+    d = _whisper_model_dir()
+    try:
+        if d.is_dir() and any(d.iterdir()):
+            return True, "模型目录已就绪"
+    except OSError:
+        pass
     return False, ""
 
 
 _PYFN = {"cft": _pyfn_check_cft, "model": _pyfn_check_model}
 
 
-TOOLS: list[Tool] = [
+def _tools() -> list[Tool]:
+    """Build the recipe table (model install argv needs a live EASEL_MODELS_DIR)."""
+    return [
     # ── 视频产线套件（Remotion）──
     Tool("node", "Node.js", "rm", "rm 运行时 · 建议 24 LTS",
          ["node", "-v"],
@@ -117,7 +144,7 @@ TOOLS: list[Tool] = [
     Tool("model", "Whisper large-v3 模型", "rm", "约 3.1GB · hf-mirror 直拉 · 不入包",
          ["@pyfn:model"],
          _pip_chain("huggingface_hub", timeout=600)
-         + [("hf-mirror 下载 large-v3", ["{python}", "-c", WHISPER_MODEL_PY], 7200)],
+         + [("hf-mirror 下载 large-v3", ["{python}", "-c", _whisper_model_py()], 7200)],
          big=True),
     Tool("rmdeps", "Remotion 工程依赖", "rm", "蓝本内置 · npm ci 还原（镜像加速）",
          ["{python}", "-c",
@@ -144,7 +171,10 @@ TOOLS: list[Tool] = [
     Tool("pylibs", "常用 Python 库", "common", "Pillow · edge-tts · pdfplumber · requests",
          ["{python}", "-c", "import PIL,edge_tts,pdfplumber,requests;print('4/4 ok')"],
          _pip_chain("Pillow", "edge-tts", "pdfplumber", "requests")),
-]
+    ]
+
+
+TOOLS = _tools()
 
 GROUP_NAMES = {"rm": "视频产线套件（Remotion）", "pub": "发布链", "common": "常用库"}
 
@@ -207,6 +237,16 @@ def resolve_python() -> str:
     global _PY_LIST
     if _PY_LIST:
         return _PY_LIST[0]
+    vendor = (os.environ.get("EASEL_VENDOR_ROOT") or "").strip()
+    if vendor:
+        root = Path(vendor).expanduser()
+        names = ("python.exe", "python") if os.name == "nt" else ("python3", "python")
+        for directory in (root / "python" / "bin", root / "python" / "Scripts", root / "python"):
+            for name in names:
+                cand = directory / name
+                if cand.is_file():
+                    _PY_LIST = [str(cand.resolve())]
+                    return _PY_LIST[0]
     path_env = os.environ.get("PATH", "").lower()
     scored = []
     for p in _candidate_pythons():
@@ -416,6 +456,14 @@ def install_tool(tool: Tool, python: str, dir_: str | None = None) -> dict:
         print(f"✓ {tool.name} 已装，跳过（{pre['version']}）{note}", file=sys.stderr)
         return {"id": tool.id, "state": "ok", "version": pre["version"],
                 "strategy": "已装", "detail": note or None}
+
+    if _is_packaged() and tool.id in _PACKAGED_BUILTIN_IDS:
+        return {"id": tool.id, "state": "fail", "version": None, "strategy": None,
+                "detail": "打包版已内置该运行时，禁止系统级安装；请检查 EASEL_VENDOR_ROOT"}
+
+    # Refresh model download argv so EASEL_MODELS_DIR changes take effect.
+    if tool.id == "model":
+        tool = next(t for t in _tools() if t.id == "model")
 
     print(f"▶ 安装 {tool.name}（{tool.desc}）", file=sys.stderr)
     last_err = ""

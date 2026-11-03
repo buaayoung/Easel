@@ -12,9 +12,16 @@ BASE = "https://hf-mirror.com/Systran/faster-whisper-large-v3/resolve/main"
 FILES = ["config.json", "tokenizer.json", "vocabulary.json", "preprocessor_config.json", "model.bin"]
 
 
+def _default_dest() -> str:
+    """Align with install_tool: EASEL_MODELS_DIR/whisper-large-v3."""
+    base = (os.environ.get("EASEL_MODELS_DIR") or "").strip()
+    root = os.path.expanduser(base) if base else os.path.expanduser("~/models")
+    return os.path.join(root, "whisper-large-v3")
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--dest", default=os.path.expanduser("~/models/faster-whisper-large-v3"))
+    ap.add_argument("--dest", default=_default_dest())
     a = ap.parse_args()
     os.makedirs(a.dest, exist_ok=True)
     for f in FILES:

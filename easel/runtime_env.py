@@ -114,12 +114,39 @@ def _installation_directories(environment: dict[str, str], home: Path) -> list[P
     return directories
 
 
+def _prepend_vendor_path(result: dict[str, str], path_key: str) -> dict[str, str]:
+    """Put EASEL_VENDOR_ROOT bin dirs first so bundled tools win over system PATH."""
+    from easel.vendor_paths import vendor_bin_dirs, vendor_root
+
+    root = vendor_root(result)
+    if root is None:
+        return result
+    bins = vendor_bin_dirs(root)
+    if not bins:
+        return result
+    separator = ";" if WINDOWS else os.pathsep
+    current_path = result.get(path_key, os.defpath)
+    seen = {os.path.normcase(directory) for directory in current_path.split(separator) if directory}
+    prefixes: list[str] = []
+    for directory in bins:
+        key = os.path.normcase(str(directory))
+        if key in seen:
+            continue
+        seen.add(key)
+        prefixes.append(str(directory))
+    if prefixes:
+        result[path_key] = separator.join([*prefixes, current_path]) if current_path else separator.join(prefixes)
+    result.setdefault("EASEL_VENDOR_ROOT", str(root))
+    return result
+
+
 def web_environment(environment: dict[str, str]) -> dict[str, str]:
     """Find user-installed Agent CLIs when a non-interactive launcher loses PATH."""
     result = dict(environment)
     path_key = next((key for key in result if key.upper() == "PATH"), "PATH") if WINDOWS else "PATH"
+    result = _prepend_vendor_path(result, path_key)
     current_path = result.get(path_key, os.defpath)
-    missing = {command for command in ("openclaw", "opencode", "codex", "node")
+    missing = {command for command in ("openclaw", "opencode", "codex", "node", "ffmpeg")
                if shutil.which(command, path=current_path) is None}
     if not missing:
         return result

@@ -36,7 +36,17 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field, StrictBool
 from sse_starlette.sse import EventSourceResponse
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+# Flutter / packaged sidecar sets EASEL_ROOT to the easel-root snapshot (skills/,
+# scripts/, agents/). __file__ alone is wrong when app.py lives in vendor/web/
+# (sibling of easel-root), because parents[1] would be the vendor root without skills/.
+def _project_root() -> Path:
+    raw = (os.environ.get("EASEL_ROOT") or "").strip()
+    if raw:
+        return Path(raw).expanduser().resolve()
+    return Path(__file__).resolve().parents[1]
+
+
+PROJECT_ROOT = _project_root()
 
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
@@ -54,6 +64,10 @@ from easel.direct_api import (DirectAPIError, SYSTEM_PROMPT, api_config, api_mod
 from easel import harnesses
 from easel.harnesses import store as harness_store
 from easel.harnesses.base import HarnessError, RunRequest
+from easel.vendor_paths import (
+    PACKAGED_BUILTIN_TOOL_IDS, PACKAGED_ON_DEMAND_TOOL_IDS,
+    is_packaged, remotion_blueprint_dir, whisper_large_v3_dir,
+)
 try:
     from easel.gateway_questions import (
         GatewayClient, GatewayQuestionError, GatewayQuestionClosedError, GatewayUnsupportedError,
@@ -1298,6 +1312,18 @@ async def index():
     return FileResponse(STATIC_DIR / "index.html", media_type="text/html", headers=no_cache)
 
 
+@app.get("/api/health")
+async def api_health():
+    """Flutter sidecar 探活：进程起来即可，不依赖 OpenClaw / 模型。"""
+    return {
+        "ok": True,
+        "packaged": is_packaged(),
+        "vendorRoot": os.environ.get("EASEL_VENDOR_ROOT", "") or None,
+        "modelsDir": str(whisper_large_v3_dir().parent),
+        "whisperModel": str(whisper_large_v3_dir()),
+    }
+
+
 @app.get("/onepage")
 async def onepage():
     return FileResponse(STATIC_DIR / "onepage.html", media_type="text/html")
@@ -1566,16 +1592,51 @@ _ENV_TOOLS_CACHE: dict = {"ts": 0.0, "data": None}
 _ENV_JOBS: dict[str, dict] = {}
 
 
+def _env_tool_subprocess_env() -> dict[str, str]:
+    """install_tool 子进程继承 vendor / models 路径，并带上 web_environment PATH。"""
+    from easel.runtime_env import web_environment
+
+    return web_environment(dict(os.environ))
+
+
+def _remotion_workdir() -> Path | None:
+    """打包态 Remotion 可写工程：显式 env > Application Support 拷贝 > vendor 蓝本。"""
+    raw = (os.environ.get("EASEL_REMOTION_DIR") or "").strip()
+    if raw:
+        path = Path(raw).expanduser()
+        if (path / "package.json").is_file():
+            return path
+    writable = (os.environ.get("EASEL_DATA_DIR") or "").strip()
+    if writable:
+        cand = Path(writable).expanduser() / "remotion-projects" / "blueprint"
+        if (cand / "package.json").is_file():
+            return cand
+    return remotion_blueprint_dir()
+
+
+def _install_argv(tid: str) -> list[str]:
+    argv = [sys.executable, str(INSTALL_TOOL), "--json", "install", tid]
+    if tid in ("rmdeps", "shell"):
+        workdir = _remotion_workdir()
+        if workdir is not None:
+            argv.extend(["--dir", str(workdir)])
+    return argv
+
+
 @app.get("/api/env/tools")
 async def api_env_tools(refresh: bool = False):
     """环境体检：引擎 check --json（15 秒缓存；refresh=1 强制重测）。"""
     if not refresh and _ENV_TOOLS_CACHE["data"] and time.time() - _ENV_TOOLS_CACHE["ts"] < 15:
         return _ENV_TOOLS_CACHE["data"]
+    check_argv = [sys.executable, str(INSTALL_TOOL), "--json", "check"]
+    workdir = _remotion_workdir()
+    if workdir is not None:
+        check_argv.extend(["--dir", str(workdir)])
     try:
         proc = await asyncio.to_thread(lambda: subprocess.run(
-            [sys.executable, str(INSTALL_TOOL), "--json", "check"],
+            check_argv,
             capture_output=True, text=True, encoding="utf-8", errors="replace",
-            timeout=240, cwd=str(PROJECT_ROOT)))
+            timeout=240, cwd=str(PROJECT_ROOT), env=_env_tool_subprocess_env()))
     except subprocess.TimeoutExpired:
         raise HTTPException(504, "环境体检超时，请稍后再试")
     if proc.returncode != 0 or not (proc.stdout or "").strip():
@@ -1584,6 +1645,19 @@ async def api_env_tools(refresh: bool = False):
         data = json.loads(proc.stdout)
     except json.JSONDecodeError as e:
         raise HTTPException(500, f"体检输出解析失败：{e}")
+    packaged = is_packaged()
+    data["packaged"] = packaged
+    data["modelsDir"] = str(whisper_large_v3_dir().parent)
+    if packaged:
+        for tool in data.get("tools") or []:
+            tid = tool.get("id")
+            if tid in PACKAGED_BUILTIN_TOOL_IDS and tool.get("state") == "ok":
+                tool["bundled"] = True
+            elif tid in PACKAGED_BUILTIN_TOOL_IDS:
+                tool["bundled"] = False
+                tool["detail"] = tool.get("detail") or "打包版应已内置，请检查 EASEL_VENDOR_ROOT"
+            if tid in PACKAGED_ON_DEMAND_TOOL_IDS:
+                tool["onDemand"] = True
     data["cachedAt"] = int(time.time())
     _ENV_TOOLS_CACHE.update({"ts": time.time(), "data": data})
     return data
@@ -1591,6 +1665,7 @@ async def api_env_tools(refresh: bool = False):
 
 class EnvInstallRequest(BaseModel):
     id: str
+    dir: str | None = None
 
 
 _INSTALL_IDS_CACHE: dict = {"ts": 0.0, "ids": frozenset()}
@@ -1604,7 +1679,8 @@ def _install_tool_ids() -> frozenset[str]:
     try:
         p = subprocess.run([sys.executable, str(INSTALL_TOOL), "--json", "list"],
                            capture_output=True, text=True, encoding="utf-8",
-                           errors="replace", timeout=30, cwd=str(PROJECT_ROOT))
+                           errors="replace", timeout=30, cwd=str(PROJECT_ROOT),
+                           env=_env_tool_subprocess_env())
         ids = frozenset(t["id"] for t in (json.loads(p.stdout).get("tools") or []) if t.get("id"))
     except Exception:  # noqa: BLE001
         return _INSTALL_IDS_CACHE["ids"]
@@ -1615,11 +1691,19 @@ def _install_tool_ids() -> frozenset[str]:
 
 @app.post("/api/env/install")
 async def api_env_install(req: EnvInstallRequest):
-    """后台安装（引擎 install）：立即返回 jobId，前端轮询进度。"""
+    """后台安装（引擎 install）：立即返回 jobId，前端轮询进度。
+
+    打包态（EASEL_PACKAGED / EASEL_VENDOR_ROOT）：禁止系统级安装 node/ffmpeg/python 等，
+    仅允许 model 等大资源与可写目录类（rmdeps/shell）落到 Application Support。
+    """
     tid = (req.id or "").strip()
     known = await asyncio.to_thread(_install_tool_ids)
     if tid not in known:
         raise HTTPException(400, f"无效的工具 id：{tid[:40]!r}")
+    if is_packaged() and tid in PACKAGED_BUILTIN_TOOL_IDS:
+        raise HTTPException(
+            409,
+            f"打包版已内置 {tid}，禁止系统级安装；请检查 EASEL_VENDOR_ROOT / PATH")
     job_id = uuid.uuid4().hex[:16]
     if len(_ENV_JOBS) >= 200:                   # 任务表不能无限长：清掉最老的已结束任务
         for k, _ in sorted((kv for kv in _ENV_JOBS.items() if kv[1].get("ended")),
@@ -1632,10 +1716,19 @@ async def api_env_install(req: EnvInstallRequest):
     def _run() -> None:
         proc = None
         try:
+            argv = _install_argv(tid)
+            if req.dir and tid in ("rmdeps", "shell"):
+                # 调用方显式目录优先于默认 remotion workdir
+                if "--dir" in argv:
+                    i = argv.index("--dir")
+                    argv[i + 1] = req.dir
+                else:
+                    argv.extend(["--dir", req.dir])
             proc = subprocess.Popen(
-                [sys.executable, str(INSTALL_TOOL), "--json", "install", tid],
+                argv,
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                text=True, encoding="utf-8", errors="replace", cwd=str(PROJECT_ROOT))
+                text=True, encoding="utf-8", errors="replace", cwd=str(PROJECT_ROOT),
+                env=_env_tool_subprocess_env())
             # stdout 必须**并发**抽干：串行地先读完 stderr 再读 stdout，子进程一旦往 stdout
             # 写满管道缓冲（64K）就会阻塞，而我们还堵在 stderr 上——双向死锁。
             _out: list[str] = []

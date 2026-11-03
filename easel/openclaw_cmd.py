@@ -43,6 +43,19 @@ def openclaw_base_cmd() -> list[str]:
     Prefers ``[node, /path/to/openclaw.mjs]``; falls back to ``[openclaw]`` on
     PATH. Raises FileNotFoundError only when openclaw cannot be located at all.
     """
+    # 0) App-bundle vendor tree (Flutter sidecar): fixed node + openclaw.mjs.
+    from easel.vendor_paths import vendor_node, vendor_openclaw_mjs, vendor_root
+
+    if vendor_root() is not None:
+        bundled_mjs = vendor_openclaw_mjs()
+        bundled_node = vendor_node()
+        if bundled_mjs is not None and bundled_node is not None:
+            return [str(bundled_node), str(bundled_mjs)]
+        if bundled_mjs is not None:
+            path_node = shutil.which("node")
+            if path_node:
+                return [path_node, str(bundled_mjs)]
+
     node = shutil.which("node")
     oc = shutil.which("openclaw")
 
