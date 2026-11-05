@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'app_state.dart';
 import 'pages/chat_page.dart';
 import 'pages/env_page.dart';
+import 'pages/settings_page.dart';
 import 'pages/video_page.dart';
 
 void main() {
@@ -20,16 +21,33 @@ class EaselApp extends StatefulWidget {
 class _EaselAppState extends State<EaselApp> {
   final AppState _state = AppState();
   int _index = 0;
+  bool _modelConfigured = true;
 
   @override
   void initState() {
     super.initState();
     _state.addListener(_onState);
-    _state.boot();
+    _state.boot().then((_) => _refreshBootstrap());
   }
 
   void _onState() {
     if (mounted) setState(() {});
+  }
+
+  Future<void> _refreshBootstrap() async {
+    final api = _state.api;
+    if (api == null) return;
+    try {
+      final boot = await api.bootstrap();
+      if (!mounted) return;
+      final ok = boot['modelConfigured'] == true;
+      setState(() {
+        _modelConfigured = ok;
+        if (!ok) _index = 3; // jump to settings
+      });
+    } catch (_) {
+      // settings page will surface its own errors
+    }
   }
 
   @override
@@ -58,21 +76,32 @@ class _EaselAppState extends State<EaselApp> {
               selectedIndex: _index,
               onDestinationSelected: (i) => setState(() => _index = i),
               labelType: NavigationRailLabelType.all,
-              destinations: const [
-                NavigationRailDestination(
+              destinations: [
+                const NavigationRailDestination(
                   icon: Icon(Icons.chat_bubble_outline),
                   selectedIcon: Icon(Icons.chat_bubble),
                   label: Text('对话'),
                 ),
-                NavigationRailDestination(
+                const NavigationRailDestination(
                   icon: Icon(Icons.movie_outlined),
                   selectedIcon: Icon(Icons.movie),
                   label: Text('视频'),
                 ),
-                NavigationRailDestination(
+                const NavigationRailDestination(
                   icon: Icon(Icons.dns_outlined),
                   selectedIcon: Icon(Icons.dns),
                   label: Text('环境'),
+                ),
+                NavigationRailDestination(
+                  icon: Badge(
+                    isLabelVisible: !_modelConfigured,
+                    child: const Icon(Icons.settings_outlined),
+                  ),
+                  selectedIcon: Badge(
+                    isLabelVisible: !_modelConfigured,
+                    child: const Icon(Icons.settings),
+                  ),
+                  label: const Text('设置'),
                 ),
               ],
             ),
@@ -120,7 +149,10 @@ class _EaselAppState extends State<EaselApp> {
                 ),
                 const SizedBox(height: 16),
                 FilledButton(
-                  onPressed: () => _state.boot(),
+                  onPressed: () async {
+                    await _state.boot();
+                    await _refreshBootstrap();
+                  },
                   child: const Text('重试'),
                 ),
                 if (_state.launcher != null) ...[
@@ -149,6 +181,15 @@ class _EaselAppState extends State<EaselApp> {
         ChatPage(api: api),
         VideoPage(api: api),
         EnvPage(api: api),
+        SettingsPage(
+          api: api,
+          banner: _modelConfigured
+              ? null
+              : '尚未配置可用模型鉴权（与 Web「设置 → 模型配置」相同）。请填写 OpenAI Key 或切换已配置底座后保存。',
+          onConfigured: () {
+            if (!_modelConfigured) setState(() => _modelConfigured = true);
+          },
+        ),
       ],
     );
   }

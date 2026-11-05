@@ -43,15 +43,41 @@ class EaselPaths {
     return File(p.join(vendorRoot.path, 'web', 'app.py'));
   }
 
+  /// Prefer an existing CLI profile (`~/.openclaw-easel`) that already has
+  /// device identity / openclaw.json. A fresh Application Support folder has
+  /// neither, and OpenClaw then fails with "Cannot load device identity".
+  static Directory resolveOpenclawStateDir(Directory dataDir) {
+    final override = Platform.environment['EASEL_OPENCLAW_STATE_DIR'];
+    if (override != null && override.trim().isNotEmpty) {
+      final d = Directory(override.trim());
+      if (!d.existsSync()) d.createSync(recursive: true);
+      return d;
+    }
+    final home = Platform.environment['HOME'] ??
+        Platform.environment['USERPROFILE'] ??
+        '';
+    if (home.isNotEmpty) {
+      final classic = Directory(p.join(home, '.openclaw-easel'));
+      final identity = File(p.join(classic.path, 'identity', 'device.json'));
+      final config = File(p.join(classic.path, 'openclaw.json'));
+      if (classic.existsSync() &&
+          (identity.existsSync() || config.existsSync())) {
+        return classic;
+      }
+    }
+    final fallback = Directory(p.join(dataDir.path, 'openclaw-state'));
+    if (!fallback.existsSync()) fallback.createSync(recursive: true);
+    return fallback;
+  }
+
   static Future<EaselPaths> resolve() async {
     final resolved = await _resolveVendorOrRepo();
     final support = await getApplicationSupportDirectory();
     final dataDir = Directory(p.join(support.path, 'Easel'));
     final modelsDir = Directory(p.join(dataDir.path, 'models'));
-    final openclawStateDir = Directory(p.join(dataDir.path, 'openclaw-state'));
-    for (final d in [dataDir, modelsDir, openclawStateDir]) {
-      if (!d.existsSync()) d.createSync(recursive: true);
-    }
+    if (!dataDir.existsSync()) dataDir.createSync(recursive: true);
+    if (!modelsDir.existsSync()) modelsDir.createSync(recursive: true);
+    final openclawStateDir = resolveOpenclawStateDir(dataDir);
     if (resolved.devRepoMode) {
       return EaselPaths(
         vendorRoot: resolved.root,
