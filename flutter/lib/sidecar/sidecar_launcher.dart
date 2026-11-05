@@ -50,6 +50,21 @@ class SidecarLauncher {
     env['EASEL_DATA_DIR'] = paths.dataDir.path;
     env['EASEL_PORT'] = '$port';
     env['EASEL_CHAT_TRANSPORT'] = env['EASEL_CHAT_TRANSPORT'] ?? 'http';
+    // OpenClaw macOS SQLite staging uses $XDG_CACHE_HOME/openclaw (else
+    // ~/Library/Caches, often EPERM under Flutter). Keep both cache + tmp
+    // inside the app sandbox.
+    final tmpDir = Directory(p.join(paths.dataDir.path, 'tmp'));
+    final cacheDir = Directory(p.join(paths.dataDir.path, 'cache'));
+    final openclawCache = Directory(p.join(cacheDir.path, 'openclaw'));
+    for (final d in [tmpDir, cacheDir, openclawCache]) {
+      if (!d.existsSync()) d.createSync(recursive: true);
+    }
+    env['EASEL_TMPDIR'] = tmpDir.path;
+    env['EASEL_CACHE_DIR'] = cacheDir.path;
+    env['XDG_CACHE_HOME'] = cacheDir.path;
+    env['TMPDIR'] = tmpDir.path;
+    env['TMP'] = tmpDir.path;
+    env['TEMP'] = tmpDir.path;
     if (paths.devRepoMode) {
       env.remove('EASEL_PACKAGED');
       // Keep any developer-set vendor; otherwise leave unset for PATH discovery.
@@ -65,6 +80,7 @@ class SidecarLauncher {
         p.join(paths.vendorRoot.path, 'ffmpeg', 'bin'),
         p.join(paths.vendorRoot.path, 'node', 'bin'),
         p.join(paths.vendorRoot.path, 'node'),
+        p.join(paths.vendorRoot.path, 'openclaw', 'node_modules', '.bin'),
         p.join(paths.vendorRoot.path, 'python', 'bin'),
         p.join(paths.vendorRoot.path, 'python', 'Scripts'),
       ].where((d) => Directory(d).existsSync()).toList();
