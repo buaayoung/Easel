@@ -140,9 +140,67 @@ def _prepend_vendor_path(result: dict[str, str], path_key: str) -> dict[str, str
     return result
 
 
+def apply_private_tmpdir(environment: dict[str, str]) -> dict[str, str]:
+    """Point OpenClaw temp/cache into the app data sandbox.
+
+    On macOS OpenClaw's SQLite snapshot staging resolves to
+    ``$XDG_CACHE_HOME/openclaw`` (preferred) then ``$XDG_CACHE_HOME/openclaw-<uid>``.
+    Without ``XDG_CACHE_HOME`` it hardcodes ``~/Library/Caches``, which is often
+    EPERM under Flutter / IDE hosts. Also pin ``TMPDIR`` for other fallbacks.
+    """
+    result = dict(environment)
+    explicit_tmp = (result.get("EASEL_TMPDIR") or "").strip()
+    explicit_cache = (result.get("EASEL_CACHE_DIR") or "").strip()
+    data = (result.get("EASEL_DATA_DIR") or "").strip()
+    state = (result.get("EASEL_OPENCLAW_STATE_DIR") or "").strip()
+    if not (explicit_tmp or explicit_cache or data or state):
+        return result
+
+    root = Path(data).expanduser() if data else (
+        Path(state).expanduser() if state else None)
+    tmp_base = Path(explicit_tmp).expanduser() if explicit_tmp else (
+        (root / "tmp") if root is not None else None)
+    cache_base = Path(explicit_cache).expanduser() if explicit_cache else (
+        (root / "cache") if root is not None else tmp_base)
+
+    def _prepare(directory: Path | None) -> str | None:
+        if directory is None:
+            return None
+        try:
+            directory.mkdir(parents=True, exist_ok=True)
+            try:
+                os.chmod(directory, 0o700)
+            except OSError:
+                pass
+            uid = os.getuid() if hasattr(os, "getuid") else None
+            # OpenClaw preferred: <cache>/openclaw ; fallback: <cache>/openclaw-<uid>
+            for name in ("openclaw", *( [f"openclaw-{uid}"] if uid is not None else [])):
+                scoped = directory / name
+                scoped.mkdir(parents=True, exist_ok=True)
+                try:
+                    os.chmod(scoped, 0o700)
+                except OSError:
+                    pass
+            return str(directory)
+        except OSError:
+            return None
+
+    tmp_path = _prepare(tmp_base)
+    cache_path = _prepare(cache_base) or tmp_path
+    if tmp_path:
+        result["EASEL_TMPDIR"] = tmp_path
+        result["TMPDIR"] = tmp_path
+        result["TMP"] = tmp_path
+        result["TEMP"] = tmp_path
+    if cache_path:
+        result["EASEL_CACHE_DIR"] = cache_path
+        result["XDG_CACHE_HOME"] = cache_path
+    return result
+
+
 def web_environment(environment: dict[str, str]) -> dict[str, str]:
     """Find user-installed Agent CLIs when a non-interactive launcher loses PATH."""
-    result = dict(environment)
+    result = apply_private_tmpdir(environment)
     path_key = next((key for key in result if key.upper() == "PATH"), "PATH") if WINDOWS else "PATH"
     result = _prepend_vendor_path(result, path_key)
     current_path = result.get(path_key, os.defpath)

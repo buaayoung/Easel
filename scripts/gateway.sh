@@ -40,6 +40,68 @@ fi
 # （见 gateway_endpoint.resolve_port 的优先级），所以这里直接赋值不会丢用户的设置。
 export OPENCLAW_GATEWAY_PORT="$GATEWAY_PORT"
 
+# OpenClaw macOS SQLite 暂存根：优先 $XDG_CACHE_HOME/openclaw，否则硬编码 ~/Library/Caches
+# （Flutter/IDE 下常 EPERM）。同时钉 TMPDIR 给其它回退路径。
+_ensure_private_tmpdir() {
+    local root tmp cache uid
+    uid="$(id -u)"
+    if [[ -n "${EASEL_DATA_DIR:-}" ]]; then
+        root="$EASEL_DATA_DIR"
+    elif [[ -n "${EASEL_OPENCLAW_STATE_DIR:-}" ]]; then
+        root="$EASEL_OPENCLAW_STATE_DIR"
+    else
+        root="${HOME}/.openclaw-easel"
+    fi
+    tmp="${EASEL_TMPDIR:-$root/tmp}"
+    cache="${EASEL_CACHE_DIR:-$root/cache}"
+    mkdir -p "$tmp" "$cache" "$cache/openclaw" "$cache/openclaw-$uid" \
+        "$tmp/openclaw" "$tmp/openclaw-$uid" 2>/dev/null || return 0
+    chmod 700 "$tmp" "$cache" "$cache/openclaw" "$cache/openclaw-$uid" \
+        "$tmp/openclaw" "$tmp/openclaw-$uid" 2>/dev/null || true
+    mkdir -p /tmp/openclaw 2>/dev/null || true
+    chmod 700 /tmp/openclaw 2>/dev/null || true
+    export EASEL_TMPDIR="$tmp"
+    export EASEL_CACHE_DIR="$cache"
+    export XDG_CACHE_HOME="$cache"
+    export TMPDIR="$tmp"
+    export TMP="$tmp"
+    export TEMP="$tmp"
+}
+_ensure_private_tmpdir
+
+# Flutter / vendor 打包态 PATH 里往往没有全局 `openclaw`；解析成可直接 _detach 的 argv。
+# 结果写入 OPENCLAW_ARGV 数组（node + openclaw.mjs，或 PATH 上的 openclaw）。
+_resolve_openclaw_argv() {
+    OPENCLAW_ARGV=()
+    local vendor="${EASEL_VENDOR_ROOT:-}" node="" mjs=""
+    if [[ -n "$vendor" ]]; then
+        for cand in "$vendor/node/bin/node" "$vendor/node/node"; do
+            [[ -x "$cand" ]] && node="$cand" && break
+        done
+        for cand in \
+            "$vendor/openclaw/openclaw.mjs" \
+            "$vendor/openclaw/node_modules/openclaw/openclaw.mjs" \
+            "$vendor/node/lib/node_modules/openclaw/openclaw.mjs"
+        do
+            [[ -f "$cand" ]] && mjs="$cand" && break
+        done
+        if [[ -n "$node" && -n "$mjs" ]]; then
+            OPENCLAW_ARGV=("$node" "$mjs")
+            return 0
+        fi
+        if [[ -x "$vendor/openclaw/node_modules/.bin/openclaw" ]]; then
+            OPENCLAW_ARGV=("$vendor/openclaw/node_modules/.bin/openclaw")
+            return 0
+        fi
+    fi
+    if command -v openclaw >/dev/null 2>&1; then
+        OPENCLAW_ARGV=("$(command -v openclaw)")
+        return 0
+    fi
+    echo "[easel] 找不到 openclaw（设 EASEL_VENDOR_ROOT 或把 openclaw 放进 PATH）" >&2
+    return 127
+}
+
 # ---- 跨平台兼容（macOS 没有 ss/setsid/procfs）--------------------------
 # ss/setsid 属 iproute2/util-linux，/proc 是 Linux 专属；macOS/BSD 三者都没有。
 # 按可用性回退，让 gateway.sh 在 Linux 与 macOS 上都能起停。
@@ -172,7 +234,8 @@ case "${1:-status}" in
                 'from easel.gateway_questions import question_bridge_supported as s; print("1" if s() else "0")' \
                 2>/dev/null | tail -n 1)" || ASKUSER_CARDS=""
         export EASEL_ASKUSER_CARDS="${ASKUSER_CARDS:-0}"   # 探不出来就按"没有卡片"走文字问答
-        _detach openclaw --profile "$PROFILE" gateway run --force --allow-unconfigured --bind loopback > "$LOGFILE" 2>&1
+        _resolve_openclaw_argv || exit 127
+        _detach "${OPENCLAW_ARGV[@]}" --profile "$PROFILE" gateway run --force --allow-unconfigured --bind loopback > "$LOGFILE" 2>&1
         # 轮询到 healthz 通，而不是睡死 4 秒就下结论：OpenClaw 2026.9.x 要加载十几个插件，
         # 实测冷启动 ~13s，固定 sleep 4 会让每次 start（以及 setup.sh 的第 8 步）都打出
         # "may not be ready yet" 假告警 —— 网关其实好的。上限给到 60s 再认定失败。

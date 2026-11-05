@@ -56,6 +56,24 @@ def test_web_environment_prepends_vendor_bins(tmp_path, monkeypatch):
     assert runtime_env.shutil.which("node", path=result["PATH"]) == str(node_bin / "node")
 
 
+def test_apply_private_tmpdir_uses_data_dir(tmp_path):
+    data = tmp_path / "Easel"
+    result = runtime_env.apply_private_tmpdir({"EASEL_DATA_DIR": str(data), "TMPDIR": "/tmp"})
+    expected_tmp = data / "tmp"
+    expected_cache = data / "cache"
+    assert result["TMPDIR"] == str(expected_tmp)
+    assert result["XDG_CACHE_HOME"] == str(expected_cache)
+    assert expected_tmp.is_dir() and expected_cache.is_dir()
+    assert (expected_cache / "openclaw").is_dir()
+    if hasattr(os, "getuid"):
+        assert (expected_cache / f"openclaw-{os.getuid()}").is_dir()
+
+
+def test_apply_private_tmpdir_noop_without_sandbox_dirs():
+    original = {"TMPDIR": "/tmp", "PATH": "/usr/bin"}
+    assert runtime_env.apply_private_tmpdir(original) == original
+
+
 @pytest.mark.skipif(os.name == "nt", reason="Unix vendor layout")
 def test_openclaw_base_cmd_prefers_vendor(tmp_path, monkeypatch):
     oc.openclaw_base_cmd.cache_clear()
@@ -114,3 +132,28 @@ def test_install_tool_model_dir_honours_env(tmp_path, monkeypatch):
     ok, detail = mod._pyfn_check_model()
     assert ok is True
     assert "就绪" in detail
+
+
+def test_resolve_python_keeps_venv_entrypoint(tmp_path, monkeypatch):
+    """Vendor venv python often symlinks to a base interpreter; must not realpath away."""
+    import os
+
+    mod = _load_install_tool("install_tool_resolve_python")
+    vendor = tmp_path / "sidecar"
+    bin_dir = vendor / "python" / "bin"
+    bin_dir.mkdir(parents=True)
+    base = tmp_path / "base-python"
+    base.write_text("#!/bin/sh\n", encoding="utf-8")
+    base.chmod(0o755)
+    entry = bin_dir / ("python.exe" if os.name == "nt" else "python3")
+    if os.name == "nt":
+        entry.write_bytes(b"MZ")
+    else:
+        entry.symlink_to(base)
+
+    monkeypatch.setenv("EASEL_VENDOR_ROOT", str(vendor))
+    mod._PY_LIST = None
+    resolved = mod.resolve_python()
+    assert os.path.normcase(resolved) == os.path.normcase(os.path.abspath(str(entry)))
+    assert Path(resolved).resolve() == base.resolve()  # symlink target differs
+    assert Path(resolved) != base.resolve()

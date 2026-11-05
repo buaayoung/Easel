@@ -576,11 +576,54 @@ IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg"}
 VIDEO_EXTS = {".mp4", ".mov", ".webm", ".m4v"}
 AUDIO_EXTS = {".mp3", ".wav", ".m4a", ".aac", ".ogg", ".flac"}
 
+def _should_autostart_gateway() -> bool:
+    """Flutter / packaged sidecar 默认自动拉起 OpenClaw gateway；可设 EASEL_AUTO_GATEWAY=0 关闭。"""
+    flag = (os.environ.get("EASEL_AUTO_GATEWAY") or "").strip().lower()
+    if flag in ("0", "false", "no", "off"):
+        return False
+    if flag in ("1", "true", "yes", "on"):
+        return True
+    # 默认：打包态或显式 vendor 根时自动起（Flutter 聊天依赖 gateway）
+    return is_packaged() or bool((os.environ.get("EASEL_VENDOR_ROOT") or "").strip())
+
+
+def _start_gateway_sync() -> None:
+    """Best-effort：后台起 gateway（带上 sidecar 的 TMPDIR / vendor PATH）。"""
+    if _direct_api_enabled():
+        return
+    try:
+        if check_gateway():
+            return
+    except Exception:  # noqa: BLE001
+        pass
+    script = PROJECT_ROOT / "scripts" / ("gateway.ps1" if os.name == "nt" else "gateway.sh")
+    if not script.is_file():
+        print(f"[gateway] 找不到启动脚本：{script}", file=sys.stderr, flush=True)
+        return
+    cmd = (["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script), "start"]
+           if os.name == "nt" else ["bash", str(script), "start"])
+    try:
+        from easel.runtime_env import apply_private_tmpdir, web_environment
+
+        env = apply_private_tmpdir(web_environment(dict(os.environ)))
+        # gateway.sh 冷启动可到 ~60s；这里只触发、不阻塞 lifespan
+        subprocess.Popen(
+            cmd, cwd=str(PROJECT_ROOT), env=env,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        print("[gateway] 已后台启动 OpenClaw gateway（chat 依赖它）", file=sys.stderr, flush=True)
+    except Exception as e:  # noqa: BLE001
+        print(f"[gateway] 自动启动失败：{e}", file=sys.stderr, flush=True)
+
+
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
-    """应用生命周期：关机时回收公众号扫码进程（替代已弃用的 on_event）。"""
+    """应用生命周期：可选自动起 gateway；关机时回收公众号扫码进程。"""
     global _HARNESS_LOOP
     _HARNESS_LOOP = asyncio.get_running_loop()
+    if _should_autostart_gateway():
+        await asyncio.to_thread(_start_gateway_sync)
     yield
     tasks = list(_HARNESS_TASKS)
     for task in tasks:
@@ -795,13 +838,14 @@ def _easel_proxy() -> str:
 
 def _proxy_env() -> dict[str, str]:
     """返回带外网代理的环境变量（保护内网直连）。"""
-    from easel.runtime_env import proxy_environment
+    from easel.runtime_env import apply_private_tmpdir, proxy_environment, web_environment
 
     env = proxy_environment(dict(os.environ),
                             'localhost,127.0.0.1,10.*,*.xiaohongshu.com,*.devops.xiaohongshu.com,*.douyin.com,*.kuaishou.com,*.zhihu.com,*.bilibili.com,*.weixin.qq.com,*.qq.com',
                             env_file=ENV_FILE)
     env.setdefault('EASEL_ROOT', str(PROJECT_ROOT))
-    return env
+    # Flutter 宿主常把 TMPDIR 指到不可写的 Library/Caches；钉到 app 沙箱。
+    return apply_private_tmpdir(web_environment(env))
 
 
 def _publish_env() -> dict[str, str]:
@@ -1614,8 +1658,23 @@ def _remotion_workdir() -> Path | None:
     return remotion_blueprint_dir()
 
 
+def _install_tool_python() -> str:
+    """Interpreter for env checks/installs.
+
+    Prefer the running sidecar entrypoint (venv path). Do not realpath it —
+    vendor venvs commonly symlink to a base interpreter and lose site-packages.
+    """
+    from easel.vendor_paths import vendor_python
+
+    bundled = vendor_python()
+    if bundled is not None:
+        return str(bundled)
+    return sys.executable
+
+
 def _install_argv(tid: str) -> list[str]:
-    argv = [sys.executable, str(INSTALL_TOOL), "--json", "install", tid]
+    py = _install_tool_python()
+    argv = [py, str(INSTALL_TOOL), "--json", "--python", py, "install", tid]
     if tid in ("rmdeps", "shell"):
         workdir = _remotion_workdir()
         if workdir is not None:
@@ -1628,7 +1687,8 @@ async def api_env_tools(refresh: bool = False):
     """环境体检：引擎 check --json（15 秒缓存；refresh=1 强制重测）。"""
     if not refresh and _ENV_TOOLS_CACHE["data"] and time.time() - _ENV_TOOLS_CACHE["ts"] < 15:
         return _ENV_TOOLS_CACHE["data"]
-    check_argv = [sys.executable, str(INSTALL_TOOL), "--json", "check"]
+    py = _install_tool_python()
+    check_argv = [py, str(INSTALL_TOOL), "--json", "--python", py, "check"]
     workdir = _remotion_workdir()
     if workdir is not None:
         check_argv.extend(["--dir", str(workdir)])
@@ -1677,7 +1737,8 @@ def _install_tool_ids() -> frozenset[str]:
     if _INSTALL_IDS_CACHE["ids"] and time.time() - _INSTALL_IDS_CACHE["ts"] < 300:
         return _INSTALL_IDS_CACHE["ids"]
     try:
-        p = subprocess.run([sys.executable, str(INSTALL_TOOL), "--json", "list"],
+        py = _install_tool_python()
+        p = subprocess.run([py, str(INSTALL_TOOL), "--json", "--python", py, "list"],
                            capture_output=True, text=True, encoding="utf-8",
                            errors="replace", timeout=30, cwd=str(PROJECT_ROOT),
                            env=_env_tool_subprocess_env())

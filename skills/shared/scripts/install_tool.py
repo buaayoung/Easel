@@ -245,7 +245,9 @@ def resolve_python() -> str:
             for name in names:
                 cand = directory / name
                 if cand.is_file():
-                    _PY_LIST = [str(cand.resolve())]
+                    # Keep the venv entrypoint path. Path.resolve() follows the
+                    # base-interpreter symlink and drops site-packages (fw etc.).
+                    _PY_LIST = [os.path.abspath(str(cand))]
                     return _PY_LIST[0]
     path_env = os.environ.get("PATH", "").lower()
     scored = []
