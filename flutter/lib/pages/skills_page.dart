@@ -134,7 +134,7 @@ class _SkillsPageState extends State<SkillsPage> {
                                     Padding(
                                       padding: const EdgeInsets.fromLTRB(4, 8, 4, 8),
                                       child: Text(entry.key,
-                                          style: const TextStyle(
+                                          style: TextStyle(
                                               fontWeight: FontWeight.w700, color: EaselColors.textSecondary)),
                                     ),
                                     Wrap(
@@ -156,7 +156,7 @@ class _SkillsPageState extends State<SkillsPage> {
                                                     '${s['description'] ?? s['desc'] ?? ''}',
                                                     maxLines: 3,
                                                     overflow: TextOverflow.ellipsis,
-                                                    style: const TextStyle(
+                                                    style: TextStyle(
                                                         fontSize: 12.5, color: EaselColors.textSecondary, height: 1.4),
                                                   ),
                                                 ],
@@ -176,7 +176,7 @@ class _SkillsPageState extends State<SkillsPage> {
                     if (_selected != null)
                       Container(
                         width: 360,
-                        decoration: const BoxDecoration(
+                        decoration: BoxDecoration(
                           border: Border(left: BorderSide(color: EaselColors.border)),
                           color: EaselColors.surface,
                         ),
@@ -197,7 +197,7 @@ class _SkillsPageState extends State<SkillsPage> {
                               ],
                             ),
                             Text('${_selected!['description'] ?? _selected!['desc'] ?? ''}',
-                                style: const TextStyle(fontSize: 12.5, color: EaselColors.textSecondary)),
+                                style: TextStyle(fontSize: 12.5, color: EaselColors.textSecondary)),
                             const SizedBox(height: 12),
                             TextField(
                               controller: _input,

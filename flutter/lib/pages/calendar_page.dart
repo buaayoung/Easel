@@ -109,7 +109,7 @@ class _CalendarPageState extends State<CalendarPage> {
                           Expanded(
                             child: Center(
                               child: Text(d,
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                       fontSize: 12, color: EaselColors.textTertiary, fontWeight: FontWeight.w600)),
                             ),
                           ),
@@ -152,7 +152,7 @@ class _CalendarPageState extends State<CalendarPage> {
                                     '${it['title'] ?? ''}',
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(fontSize: 10, color: EaselColors.accentEnd),
+                                    style: TextStyle(fontSize: 10, color: EaselColors.accentEnd),
                                   ),
                               ],
                             ),

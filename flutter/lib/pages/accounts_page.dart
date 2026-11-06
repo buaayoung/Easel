@@ -527,7 +527,7 @@ class _AccountsPageState extends State<AccountsPage> {
                           ),
                         ),
                         if (_accounts.isEmpty)
-                          const Expanded(
+                          Expanded(
                             child: Center(
                               child: Text('暂无账号平台数据', style: TextStyle(color: EaselColors.textSecondary)),
                             ),
@@ -580,7 +580,7 @@ class _AccountsPageState extends State<AccountsPage> {
               if (_smsErr.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(top: 6),
-                  child: Text(_smsErr, style: const TextStyle(color: EaselColors.red, fontSize: 12)),
+                  child: Text(_smsErr, style: TextStyle(color: EaselColors.red, fontSize: 12)),
                 ),
               const SizedBox(height: 12),
               SizedBox(
@@ -598,14 +598,14 @@ class _AccountsPageState extends State<AccountsPage> {
                   width: 240,
                   height: 240,
                   fit: BoxFit.contain,
-                  errorBuilder: (_, __, ___) => const SizedBox(
+                  errorBuilder: (_, __, ___) => SizedBox(
                     height: 240,
                     child: Center(child: Text('二维码加载失败', style: TextStyle(color: EaselColors.red))),
                   ),
                 ),
               ),
             ] else if (qr.state == 'success') ...[
-              const Padding(
+              Padding(
                 padding: EdgeInsets.all(40),
                 child: Icon(Icons.check_circle, size: 56, color: EaselColors.green),
               ),
@@ -615,11 +615,11 @@ class _AccountsPageState extends State<AccountsPage> {
                 child: Text(
                   qr.message.isEmpty ? '登录失败，可关闭后重试' : qr.message,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(color: EaselColors.red, fontSize: 13),
+                  style: TextStyle(color: EaselColors.red, fontSize: 13),
                 ),
               ),
             ] else ...[
-              const Padding(
+              Padding(
                 padding: EdgeInsets.all(40),
                 child: Column(
                   children: [
@@ -654,31 +654,31 @@ class _AccountsPageState extends State<AccountsPage> {
           children: [
             Text('配置 $name', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
             const SizedBox(height: 8),
-            const Text(
+            Text(
               '公众号用官方接口发布，需填开发者凭证（公众平台 → 设置与开发 → 开发接口管理）。\n'
               '需把本机出口 IP 加入公众号「IP 白名单」，否则报 40164。文章发到草稿箱。',
               style: TextStyle(fontSize: 12.5, color: EaselColors.textSecondary, height: 1.55),
             ),
             if (_credMsg.isNotEmpty) ...[
               const SizedBox(height: 10),
-              Text(_credMsg, style: const TextStyle(color: EaselColors.green, fontSize: 12.5)),
+              Text(_credMsg, style: TextStyle(color: EaselColors.green, fontSize: 12.5)),
             ],
             const SizedBox(height: 12),
-            const Text('AppID', style: TextStyle(fontSize: 12, color: EaselColors.textSecondary)),
+            Text('AppID', style: TextStyle(fontSize: 12, color: EaselColors.textSecondary)),
             TextField(controller: _appId, autofocus: true, decoration: const InputDecoration(hintText: 'wx...')),
             const SizedBox(height: 10),
-            const Text('AppSecret', style: TextStyle(fontSize: 12, color: EaselColors.textSecondary)),
+            Text('AppSecret', style: TextStyle(fontSize: 12, color: EaselColors.textSecondary)),
             TextField(
               controller: _appSecret,
               obscureText: true,
               decoration: const InputDecoration(hintText: '开发者密钥（不会回显）'),
             ),
             const SizedBox(height: 10),
-            const Text('默认作者（可选）', style: TextStyle(fontSize: 12, color: EaselColors.textSecondary)),
+            Text('默认作者（可选）', style: TextStyle(fontSize: 12, color: EaselColors.textSecondary)),
             TextField(controller: _author, decoration: const InputDecoration(hintText: '文章署名')),
             if (_credErr.isNotEmpty) ...[
               const SizedBox(height: 8),
-              Text(_credErr, style: const TextStyle(color: EaselColors.red, fontSize: 12.5)),
+              Text(_credErr, style: TextStyle(color: EaselColors.red, fontSize: 12.5)),
             ],
             const SizedBox(height: 16),
             Row(

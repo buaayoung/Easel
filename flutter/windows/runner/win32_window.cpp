@@ -216,6 +216,16 @@ Win32Window::MessageHandler(HWND hwnd,
     case WM_DWMCOLORIZATIONCOLORCHANGED:
       UpdateTheme(hwnd);
       return 0;
+
+    case WM_GETMINMAXINFO: {
+      // Logical min size (same as macOS contentMinSize); convert to physical px.
+      auto info = reinterpret_cast<MINMAXINFO*>(lparam);
+      UINT dpi = FlutterDesktopGetDpiForHWND(hwnd);
+      double scale = dpi / 96.0;
+      info->ptMinTrackSize.x = Scale(1280, scale);
+      info->ptMinTrackSize.y = Scale(800, scale);
+      return 0;
+    }
   }
 
   return DefWindowProc(window_handle_, message, wparam, lparam);

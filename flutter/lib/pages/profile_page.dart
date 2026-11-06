@@ -154,7 +154,7 @@ class _ProfilePageState extends State<ProfilePage> {
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text(
+                            Text(
                               '暂无画像。点击「新建画像」打开配置向导。',
                               style: TextStyle(
                                 color: EaselColors.textSecondary,
@@ -184,7 +184,7 @@ class _ProfilePageState extends State<ProfilePage> {
                                       EaselColors.radius,
                                     ),
                                   ),
-                                  child: const Icon(
+                                  child: Icon(
                                     Icons.badge_outlined,
                                     color: EaselColors.accentStart,
                                     size: 18,
@@ -217,7 +217,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 ),
                 Expanded(
                   child: _selected == null
-                      ? const Center(
+                      ? Center(
                           child: Text(
                             '选择左侧画像查看维度文件',
                             style: TextStyle(color: EaselColors.textSecondary),

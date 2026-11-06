@@ -1,6 +1,9 @@
-# Easel Flutter host
+# Unisyn Flutter host
 
 桌面 UI：启动时拉起本地 FastAPI sidecar（`web/app.py`），界面布局与 Web 前端对齐（侧栏 + 工作台/对话/技能库/内容库/账号/画像 + 设置浮层），通过 `/api/*` 调用能力。
+
+- 应用名：`Unisyn`
+- Bundle ID：`com.jyyc.unisyn`
 
 ## 前置
 
@@ -26,7 +29,7 @@ flutter run -d macos
 ```bash
 # 一键：组装 sidecar → flutter build → 嵌入 .app → 打 DMG
 ./scripts/package_macos.sh
-# 输出：flutter/.../easel_app.app 与 dist/Easel-<version>-macos.dmg
+# 输出：flutter/.../Unisyn.app 与 dist/Unisyn-<version>-macos.dmg
 
 # 已有 sidecar / Release .app 时可跳过耗时步骤：
 SKIP_BUNDLE=1 SKIP_FLUTTER_BUILD=1 ./scripts/package_macos.sh

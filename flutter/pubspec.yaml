@@ -1,5 +1,5 @@
-name: easel_app
-description: Easel desktop host — Flutter UI + local FastAPI sidecar.
+name: unisyn
+description: Unisyn desktop host — Flutter UI + local FastAPI sidecar.
 publish_to: "none"
 version: 1.0.0+1
 

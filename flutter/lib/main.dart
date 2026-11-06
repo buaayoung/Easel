@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'shell/app_controller.dart';
 import 'shell/app_shell.dart';
 import 'theme/easel_theme.dart';
+import 'theme/theme_controller.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -18,12 +19,19 @@ class EaselApp extends StatefulWidget {
 
 class _EaselAppState extends State<EaselApp> {
   final AppController _controller = AppController();
+  final ThemeController _theme = ThemeController();
+
+  /// Stable ThemeData — never rebuild (avoids mutating global palette mid-frame).
+  static final ThemeData _light = buildEaselTheme(Brightness.light);
+  static final ThemeData _dark = buildEaselTheme(Brightness.dark);
 
   @override
   void initState() {
     super.initState();
     _controller.addListener(_onChange);
+    _theme.addListener(_onChange);
     _controller.boot();
+    _theme.load();
   }
 
   void _onChange() {
@@ -33,19 +41,41 @@ class _EaselAppState extends State<EaselApp> {
   @override
   void dispose() {
     _controller.removeListener(_onChange);
+    _theme.removeListener(_onChange);
     _controller.shutdown();
+    _theme.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Easel',
+      title: 'Unisyn',
       debugShowCheckedModeBanner: false,
-      theme: buildEaselTheme(),
+      theme: _light,
+      darkTheme: _dark,
+      themeMode: _theme.themeMode,
+      // Avoid ColorScheme lerp between light/dark mid-transition.
+      themeAnimationDuration: Duration.zero,
+      builder: (context, child) {
+        final palette = EaselPalette.of(context);
+        EaselColors.bind(palette);
+        return KeyedSubtree(
+          key: ValueKey<bool>(palette.isDark),
+          child: ColoredBox(
+            color: palette.bg,
+            child: DefaultTextStyle(
+              style: TextStyle(color: palette.text, fontSize: 14, height: 1.6),
+              child: IconTheme(
+                data: IconThemeData(color: palette.textSecondary),
+                child: child ?? const SizedBox.shrink(),
+              ),
+            ),
+          ),
+        );
+      },
       home: Scaffold(
-        // 让主区纸感径向背景透出来，避免 Scaffold 纯白盖住氛围层
-        backgroundColor: EaselColors.bg,
+        backgroundColor: Colors.transparent,
         body: _body(),
       ),
     );
@@ -53,12 +83,12 @@ class _EaselAppState extends State<EaselApp> {
 
   Widget _body() {
     if (_controller.booting) {
-      return const Center(
+      return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            CircularProgressIndicator(),
-            SizedBox(height: 16),
+            const CircularProgressIndicator(),
+            const SizedBox(height: 16),
             Text('正在启动本地 FastAPI sidecar…', style: TextStyle(color: EaselColors.textSecondary)),
           ],
         ),
@@ -73,15 +103,15 @@ class _EaselAppState extends State<EaselApp> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.error_outline, size: 48, color: EaselColors.red),
+                Icon(Icons.error_outline, size: 48, color: EaselColors.red),
                 const SizedBox(height: 12),
                 Text(
                   _controller.bootError ?? '未知错误',
                   textAlign: TextAlign.center,
-                  style: const TextStyle(color: EaselColors.text),
+                  style: TextStyle(color: EaselColors.text),
                 ),
                 const SizedBox(height: 8),
-                const Text(
+                Text(
                   '请先运行 scripts/bundle_sidecar.sh，或设置 EASEL_VENDOR_ROOT。',
                   style: TextStyle(color: EaselColors.textSecondary, fontSize: 13),
                   textAlign: TextAlign.center,
@@ -98,7 +128,7 @@ class _EaselAppState extends State<EaselApp> {
                     child: SingleChildScrollView(
                       child: Text(
                         _controller.launcher!.logText,
-                        style: const TextStyle(fontFamily: 'monospace', fontSize: 11, color: EaselColors.textSecondary),
+                        style: TextStyle(fontFamily: 'monospace', fontSize: 11, color: EaselColors.textSecondary),
                       ),
                     ),
                   ),
@@ -110,6 +140,6 @@ class _EaselAppState extends State<EaselApp> {
       );
     }
 
-    return AppShell(controller: _controller);
+    return AppShell(controller: _controller, theme: _theme);
   }
 }

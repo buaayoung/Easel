@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../models/chat_session.dart';
 import '../theme/easel_theme.dart';
+import '../theme/theme_controller.dart';
+import '../widgets/theme_toggle.dart';
 import 'app_controller.dart';
 
 const _nav = <(AppPage, IconData, String)>[
@@ -14,9 +16,10 @@ const _nav = <(AppPage, IconData, String)>[
 ];
 
 class EaselSidebar extends StatefulWidget {
-  const EaselSidebar({super.key, required this.controller});
+  const EaselSidebar({super.key, required this.controller, required this.theme});
 
   final AppController controller;
+  final ThemeController theme;
 
   @override
   State<EaselSidebar> createState() => _EaselSidebarState();
@@ -48,7 +51,7 @@ class _EaselSidebarState extends State<EaselSidebar> {
 
     return Container(
       width: EaselColors.sidebarWidth,
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
@@ -57,7 +60,7 @@ class _EaselSidebarState extends State<EaselSidebar> {
             EaselColors.sidebarMid,
             EaselColors.sidebarBottom,
           ],
-          stops: [0, 0.72, 1],
+          stops: const [0, 0.72, 1],
         ),
         border: Border(right: BorderSide(color: EaselColors.border)),
       ),
@@ -77,8 +80,8 @@ class _EaselSidebarState extends State<EaselSidebar> {
                       height: 28,
                     ),
                     const SizedBox(width: 10),
-                    const Text(
-                      'Easel',
+                    Text(
+                      'Unisyn',
                       style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.w700,
@@ -86,6 +89,8 @@ class _EaselSidebarState extends State<EaselSidebar> {
                         color: EaselColors.text,
                       ),
                     ),
+                    const Spacer(),
+                    ThemeToggleButton(controller: widget.theme),
                   ],
                 ),
                 const SizedBox(height: 16),
@@ -104,7 +109,7 @@ class _EaselSidebarState extends State<EaselSidebar> {
                       // ignore: deprecated_member_use — need controlled value when persona list changes
                       value: current,
                       dropdownColor: EaselColors.bgElev,
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: EaselColors.text,
                         fontSize: 13.5,
                       ),
@@ -172,7 +177,7 @@ class _EaselSidebarState extends State<EaselSidebar> {
                 children: [
                   Row(
                     children: [
-                      const Padding(
+                      Padding(
                         padding: EdgeInsets.only(left: 8),
                         child: Text(
                           '对话',
@@ -222,7 +227,7 @@ class _EaselSidebarState extends State<EaselSidebar> {
                                   ),
                                   Text(
                                     '已归档 · ${archived.length}',
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontSize: 12,
                                       color: EaselColors.textTertiary,
                                     ),
@@ -243,7 +248,7 @@ class _EaselSidebarState extends State<EaselSidebar> {
           ),
           Container(
             padding: const EdgeInsets.fromLTRB(12, 10, 8, 12),
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               border: Border(top: BorderSide(color: EaselColors.border)),
             ),
             child: Row(
@@ -272,7 +277,7 @@ class _EaselSidebarState extends State<EaselSidebar> {
                 Expanded(
                   child: Text(
                     _statusText(),
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 11.5,
                       color: EaselColors.textSecondary,
                     ),

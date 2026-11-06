@@ -105,7 +105,7 @@ class _PublishPageState extends State<PublishPage> {
                           ),
                           const SizedBox(width: 12),
                           Text('当前策略：$_mode',
-                              style: const TextStyle(fontSize: 13, color: EaselColors.textSecondary)),
+                              style: TextStyle(fontSize: 13, color: EaselColors.textSecondary)),
                         ],
                       ),
                     ),
@@ -141,7 +141,7 @@ class _PublishPageState extends State<PublishPage> {
                     ),
                     if (_note != null) ...[
                       const SizedBox(height: 12),
-                      Text(_note!, style: const TextStyle(color: EaselColors.textSecondary)),
+                      Text(_note!, style: TextStyle(color: EaselColors.textSecondary)),
                     ],
                   ],
                 ),

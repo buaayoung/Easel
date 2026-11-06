@@ -18,7 +18,10 @@ class EaselModal extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.black54,
+      // Light `.overlay`: rgba(24,24,48,0.42); dark: rgba(0,0,0,0.6)
+      color: EaselColors.isDark
+          ? const Color(0x99000000)
+          : const Color(0x6B181830),
       child: GestureDetector(
         onTap: onBarrierTap,
         behavior: HitTestBehavior.opaque,
@@ -77,7 +80,9 @@ class EaselChip extends StatelessWidget {
             label,
             style: TextStyle(
               fontSize: 13,
-              color: selected ? EaselColors.accentEnd : EaselColors.textSecondary,
+              color: selected
+                  ? EaselColors.accentEnd
+                  : EaselColors.textSecondary,
             ),
           ),
         ),

@@ -21,7 +21,10 @@ class SettingsOverlay extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: const Color(0x99000000),
+      // Light: rgba(23,25,28,0.38); dark: rgba(0,0,0,0.6)
+      color: EaselColors.isDark
+          ? const Color(0x99000000)
+          : const Color(0x6117191C),
       child: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 1180, maxHeight: 680),
@@ -42,13 +45,20 @@ class SettingsOverlay extends StatelessWidget {
                     Container(
                       height: 52,
                       padding: const EdgeInsets.symmetric(horizontal: 16),
-                      decoration: const BoxDecoration(
-                        border: Border(bottom: BorderSide(color: EaselColors.border)),
+                      decoration: BoxDecoration(
+                        border: Border(
+                          bottom: BorderSide(color: EaselColors.border),
+                        ),
                       ),
                       child: Row(
                         children: [
-                          const Text('设置',
-                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                          const Text(
+                            '设置',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
                           const Spacer(),
                           IconButton(
                             onPressed: onClose,

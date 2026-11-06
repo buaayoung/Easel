@@ -13,6 +13,7 @@ import '../pages/publish_page.dart';
 import '../pages/skills_page.dart';
 import '../pages/trends_page.dart';
 import '../theme/easel_theme.dart';
+import '../theme/theme_controller.dart';
 import '../widgets/onboarding_wizard.dart';
 import 'app_controller.dart';
 import 'settings_overlay.dart';
@@ -20,9 +21,10 @@ import 'sidebar.dart';
 import 'sub_nav.dart';
 
 class AppShell extends StatelessWidget {
-  const AppShell({super.key, required this.controller});
+  const AppShell({super.key, required this.controller, required this.theme});
 
   final AppController controller;
+  final ThemeController theme;
 
   bool get _showSubNav => const {
         AppPage.trends,
@@ -39,7 +41,7 @@ class AppShell extends StatelessWidget {
       children: [
         Row(
           children: [
-            EaselSidebar(controller: c),
+            EaselSidebar(controller: c, theme: theme),
             Expanded(
               child: mainContentBackground(
                 child: Column(

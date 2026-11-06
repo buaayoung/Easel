@@ -32,7 +32,7 @@ class PageScaffold extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(title,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 22,
                           fontWeight: FontWeight.w700,
                           letterSpacing: -0.3,
@@ -41,7 +41,7 @@ class PageScaffold extends StatelessWidget {
                     if (subtitle != null) ...[
                       const SizedBox(height: 4),
                       Text(subtitle!,
-                          style: const TextStyle(fontSize: 13.5, color: EaselColors.textSecondary)),
+                          style: TextStyle(fontSize: 13.5, color: EaselColors.textSecondary)),
                     ],
                   ],
                 ),

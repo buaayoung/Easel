@@ -144,7 +144,7 @@ class _DashboardPageState extends State<DashboardPage> {
           children: [
             Text(
               label,
-              style: const TextStyle(
+              style: TextStyle(
                 color: EaselColors.textSecondary,
                 fontSize: 13,
               ),

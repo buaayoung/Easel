@@ -89,13 +89,13 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "com.easel" "\0"
-            VALUE "FileDescription", "easel_app" "\0"
+            VALUE "CompanyName", "com.jyyc" "\0"
+            VALUE "FileDescription", "Unisyn" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "easel_app" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 com.easel. All rights reserved." "\0"
-            VALUE "OriginalFilename", "easel_app.exe" "\0"
-            VALUE "ProductName", "easel_app" "\0"
+            VALUE "InternalName", "Unisyn" "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 jyyc. All rights reserved." "\0"
+            VALUE "OriginalFilename", "Unisyn.exe" "\0"
+            VALUE "ProductName", "Unisyn" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

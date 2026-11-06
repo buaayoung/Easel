@@ -86,7 +86,7 @@ class _ChatPageState extends State<ChatPage> {
                   Padding(
                     padding: const EdgeInsets.only(bottom: 8),
                     child: Text(c.stream!.activity,
-                        style: const TextStyle(fontSize: 12.5, color: EaselColors.textTertiary)),
+                        style: TextStyle(fontSize: 12.5, color: EaselColors.textTertiary)),
                   ),
                 _bubble(ChatMessage(
                   role: 'assistant',
@@ -120,7 +120,7 @@ class _ChatPageState extends State<ChatPage> {
                 children: [
                   Image.asset('assets/easel-icon-transparent.png', width: 36, height: 36),
                   const SizedBox(width: 10),
-                  const Text('Easel',
+                  Text('Unisyn',
                       style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: EaselColors.textSecondary)),
                 ],
               ),
@@ -132,7 +132,7 @@ class _ChatPageState extends State<ChatPage> {
               Text(
                 direct ? 'API 直连：写文案、策划选题、分析附件。本机工具和自动发布未启用。' : '从选题到发布，一站式帮你把想法做成能发的内容。',
                 textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 14, color: EaselColors.textSecondary),
+                style: TextStyle(fontSize: 14, color: EaselColors.textSecondary),
               ),
               const SizedBox(height: 22),
               _composer(hero: true),
@@ -170,7 +170,7 @@ class _ChatPageState extends State<ChatPage> {
                                       Text(s.$3,
                                           maxLines: 2,
                                           overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(fontSize: 12, color: EaselColors.textSecondary)),
+                                          style: TextStyle(fontSize: 12, color: EaselColors.textSecondary)),
                                     ],
                                   ),
                                 ),
@@ -234,10 +234,10 @@ class _ChatPageState extends State<ChatPage> {
             children: [
               Text(
                 streaming ? '生成中…' : 'Enter 发送 · Shift+Enter 换行',
-                style: const TextStyle(fontSize: 11.5, color: EaselColors.textTertiary),
+                style: TextStyle(fontSize: 11.5, color: EaselColors.textTertiary),
               ),
               const Spacer(),
-              // Dark theme `.send-btn`: light fill (`--text`), dark icon (`--bg`)
+              // Web `.send-btn`: background var(--text); light icon=#fff, dark icon=var(--bg)
               Material(
                 color: Colors.transparent,
                 child: InkWell(
@@ -249,14 +249,20 @@ class _ChatPageState extends State<ChatPage> {
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(10),
                       color: EaselColors.text,
-                      boxShadow: const [
-                        BoxShadow(color: Color(0x33000000), blurRadius: 10, offset: Offset(0, 2)),
+                      boxShadow: [
+                        BoxShadow(
+                          color: EaselColors.isDark
+                              ? const Color(0x33000000)
+                              : const Color(0x2E17191C),
+                          blurRadius: 10,
+                          offset: const Offset(0, 2),
+                        ),
                       ],
                     ),
                     child: Icon(
                       streaming ? Icons.stop_rounded : Icons.arrow_upward_rounded,
                       size: 18,
-                      color: EaselColors.bg,
+                      color: EaselColors.isDark ? EaselColors.bg : Colors.white,
                     ),
                   ),
                 ),
@@ -276,11 +282,33 @@ class _ChatPageState extends State<ChatPage> {
         margin: const EdgeInsets.only(bottom: 12),
         constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.62),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        decoration: BoxDecoration(
-          color: user ? EaselColors.accentSoft : EaselColors.surface,
-          borderRadius: BorderRadius.circular(EaselColors.radiusLg),
-          border: Border.all(color: EaselColors.border),
-        ),
+        decoration: user
+            ? BoxDecoration(
+                // Web `.message-bubble.user` (+ dark override)
+                gradient: EaselColors.isDark ? null : EaselColors.accentGradientSoft,
+                color: EaselColors.isDark ? EaselColors.accentSoft : null,
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(EaselColors.radiusLg),
+                  topRight: Radius.circular(EaselColors.radiusLg),
+                  bottomLeft: Radius.circular(EaselColors.radiusLg),
+                  bottomRight: const Radius.circular(4),
+                ),
+                border: Border.all(
+                  color: EaselColors.isDark
+                      ? EaselColors.border
+                      : const Color(0x14334294),
+                ),
+                boxShadow: EaselColors.isDark
+                    ? null
+                    : const [
+                        BoxShadow(
+                          color: Color(0x0E17191C),
+                          blurRadius: 12,
+                          offset: Offset(0, 3),
+                        ),
+                      ],
+              )
+            : null,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -294,9 +322,18 @@ class _ChatPageState extends State<ChatPage> {
                   borderRadius: BorderRadius.circular(EaselColors.radius),
                 ),
                 child: Text(m.thinking!,
-                    style: const TextStyle(fontSize: 12.5, color: EaselColors.textSecondary)),
+                    style: TextStyle(fontSize: 12.5, color: EaselColors.textSecondary)),
               ),
-            SelectableText(m.content, style: const TextStyle(fontSize: 14, height: 1.55)),
+            SelectableText(
+              m.content,
+              style: TextStyle(
+                fontSize: 14,
+                height: 1.55,
+                color: user && !EaselColors.isDark
+                    ? const Color(0xFF303238)
+                    : EaselColors.text,
+              ),
+            ),
           ],
         ),
       ),

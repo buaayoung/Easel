@@ -26,7 +26,7 @@ class EaselSubNav extends StatelessWidget {
     return Container(
       height: 48,
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         border: Border(bottom: BorderSide(color: EaselColors.border)),
         color: EaselColors.surface,
       ),

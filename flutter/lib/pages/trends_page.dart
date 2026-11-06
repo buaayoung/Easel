@@ -202,24 +202,24 @@ class _TrendsPageState extends State<TrendsPage> {
             ),
           if (_error != null) ...[
             const SizedBox(height: 10),
-            Text(_error!, style: const TextStyle(color: EaselColors.red, fontSize: 13)),
+            Text(_error!, style: TextStyle(color: EaselColors.red, fontSize: 13)),
           ],
           for (final w in _warnings) ...[
             const SizedBox(height: 6),
-            Text(w, style: const TextStyle(color: EaselColors.amber, fontSize: 12.5)),
+            Text(w, style: TextStyle(color: EaselColors.amber, fontSize: 12.5)),
           ],
           if (!_ready) ...[
             const SizedBox(height: 24),
-            const Center(child: Text('正在加载数据源…', style: TextStyle(color: EaselColors.textSecondary))),
+            Center(child: Text('正在加载数据源…', style: TextStyle(color: EaselColors.textSecondary))),
           ] else if (_sources.isEmpty) ...[
             const SizedBox(height: 24),
-            const Center(
+            Center(
               child: Text('尚未启用数据源，请在本地热点数据源配置中添加或启用。',
                   style: TextStyle(color: EaselColors.textSecondary)),
             ),
           ] else if (_selected.isEmpty) ...[
             const SizedBox(height: 24),
-            const Center(
+            Center(
               child: Text('请选择上方的数据源查看热点。', style: TextStyle(color: EaselColors.textSecondary)),
             ),
           ],
@@ -251,7 +251,7 @@ class _TrendsPageState extends State<TrendsPage> {
                                     Text(label, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
                                     const SizedBox(width: 8),
                                     Text('${items.length}',
-                                        style: const TextStyle(fontSize: 12, color: EaselColors.textTertiary)),
+                                        style: TextStyle(fontSize: 12, color: EaselColors.textTertiary)),
                                     const Spacer(),
                                     if (_loading)
                                       const SizedBox(
@@ -263,13 +263,13 @@ class _TrendsPageState extends State<TrendsPage> {
                                 ),
                                 if (errMsg.isNotEmpty) ...[
                                   const SizedBox(height: 6),
-                                  Text(errMsg, style: const TextStyle(fontSize: 12, color: EaselColors.amber)),
+                                  Text(errMsg, style: TextStyle(fontSize: 12, color: EaselColors.amber)),
                                 ],
                                 const SizedBox(height: 8),
                                 if (items.isEmpty)
                                   Text(
                                     !ok ? '该数据源暂时不可用' : '采集成功，暂无热点',
-                                    style: const TextStyle(fontSize: 13, color: EaselColors.textSecondary),
+                                    style: TextStyle(fontSize: 13, color: EaselColors.textSecondary),
                                   )
                                 else
                                   for (var idx = 0; idx < items.length; idx++)
@@ -310,7 +310,7 @@ class _TrendsPageState extends State<TrendsPage> {
               children: [
                 Text(title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5)),
                 if (hot.isNotEmpty)
-                  Text(hot, style: const TextStyle(fontSize: 12, color: EaselColors.textTertiary)),
+                  Text(hot, style: TextStyle(fontSize: 12, color: EaselColors.textTertiary)),
               ],
             ),
           ),

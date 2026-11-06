@@ -87,7 +87,7 @@ class _BreakdownPageState extends State<BreakdownPage> {
           ),
           if (_error != null) ...[
             const SizedBox(height: 12),
-            Text(_error!, style: const TextStyle(color: EaselColors.red)),
+            Text(_error!, style: TextStyle(color: EaselColors.red)),
           ],
           const SizedBox(height: 16),
           Expanded(

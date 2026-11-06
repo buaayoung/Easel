@@ -225,7 +225,7 @@ class _OnboardingWizardState extends State<OnboardingWizard> {
 
   Widget _body() {
     if (_submitting) {
-      return const Padding(
+      return Padding(
         padding: EdgeInsets.symmetric(vertical: 48),
         child: Column(
           children: [
@@ -246,7 +246,7 @@ class _OnboardingWizardState extends State<OnboardingWizard> {
             const Text('画像已创建 ✓　AI 正在后台增强…',
                 style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
-            const Text(
+            Text(
               '正在尝试抓取社媒链接并完善各维度，可能需要 1-2 分钟。\n也可以现在就进去用，增强会在后台继续。',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 12, color: EaselColors.textSecondary, height: 1.5),
@@ -300,7 +300,7 @@ class _OnboardingWizardState extends State<OnboardingWizard> {
           ),
         ],
         if (_step == 1) ...[
-          const Padding(
+          Padding(
             padding: EdgeInsets.only(top: 8),
             child: Text(
               '贴上各平台主页链接，AI 会尽力分析你已发的内容和风格（抓不到会跳过，可留空）。',
@@ -308,7 +308,7 @@ class _OnboardingWizardState extends State<OnboardingWizard> {
             ),
           ),
           if (_platformsSel.isEmpty)
-            const Padding(
+            Padding(
               padding: EdgeInsets.only(top: 8),
               child: Text('（未选平台，可直接下一步）',
                   style: TextStyle(fontSize: 13, color: EaselColors.textSecondary)),
@@ -359,7 +359,7 @@ class _OnboardingWizardState extends State<OnboardingWizard> {
         if (_error.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(top: 12),
-            child: Text(_error, style: const TextStyle(color: EaselColors.red, fontSize: 13)),
+            child: Text(_error, style: TextStyle(color: EaselColors.red, fontSize: 13)),
           ),
       ],
     );
@@ -367,6 +367,6 @@ class _OnboardingWizardState extends State<OnboardingWizard> {
 
   Widget _label(String text) => Padding(
         padding: const EdgeInsets.only(top: 16, bottom: 6),
-        child: Text(text, style: const TextStyle(fontSize: 13, color: EaselColors.textSecondary)),
+        child: Text(text, style: TextStyle(fontSize: 13, color: EaselColors.textSecondary)),
       );
 }

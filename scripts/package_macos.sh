@@ -5,7 +5,7 @@
 #   SKIP_BUNDLE=1       — 跳过 sidecar 组装，复用 dist/sidecar
 #   SKIP_FLUTTER_BUILD=1 — 跳过 flutter build，复用已有 Release .app
 #   OUT=...             — sidecar 输出目录（默认 dist/sidecar）
-#   DMG_PATH=...        — DMG 输出路径（默认 dist/Easel-<version>-macos.dmg）
+#   DMG_PATH=...        — DMG 输出路径（默认 dist/Unisyn-<version>-macos.dmg）
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 FLUTTER_BIN="${FLUTTER_BIN:-$(command -v flutter || true)}"
@@ -25,7 +25,7 @@ PY
 VERSION="${VERSION:-1.0.0}"
 # 去掉 pubspec build 号（1.0.0+1 → 1.0.0），避免文件名里的 +
 VERSION="${VERSION%%+*}"
-DMG_PATH="${DMG_PATH:-$ROOT/dist/Easel-${VERSION}-macos.dmg}"
+DMG_PATH="${DMG_PATH:-$ROOT/dist/Unisyn-${VERSION}-macos.dmg}"
 
 if [[ "${SKIP_BUNDLE:-0}" != "1" ]]; then
   SKIP_DOWNLOAD="${SKIP_DOWNLOAD:-0}" OUT="${OUT:-$ROOT/dist/sidecar}" \
@@ -46,13 +46,13 @@ else
   echo "Skipping flutter build (reuse existing Release .app)"
 fi
 
-APP="$ROOT/flutter/build/macos/Build/Products/Release/easel_app.app"
+APP="$ROOT/flutter/build/macos/Build/Products/Release/Unisyn.app"
 if [[ ! -d "$APP" ]]; then
   # Flutter 3.16+ may use a slightly different product path
-  APP="$(find "$ROOT/flutter/build/macos" -name 'easel_app.app' -type d | head -1 || true)"
+  APP="$(find "$ROOT/flutter/build/macos" -name 'Unisyn.app' -type d | head -1 || true)"
 fi
 if [[ -z "${APP:-}" || ! -d "$APP" ]]; then
-  echo "Could not locate easel_app.app under flutter/build/macos" >&2
+  echo "Could not locate Unisyn.app under flutter/build/macos" >&2
   exit 1
 fi
 
@@ -64,18 +64,18 @@ echo "Packaged → $APP"
 du -sh "$APP" "$DEST"
 
 # ---- DMG ----
-STAGE="$(mktemp -d "${TMPDIR:-/tmp}/easel-dmg.XXXXXX")"
+STAGE="$(mktemp -d "${TMPDIR:-/tmp}/unisyn-dmg.XXXXXX")"
 cleanup() { rm -rf "$STAGE"; }
 trap cleanup EXIT
 
 # Finder 里更友好的名字；可拖到 Applications
-cp -R "$APP" "$STAGE/Easel.app"
+cp -R "$APP" "$STAGE/Unisyn.app"
 ln -s /Applications "$STAGE/Applications"
 
 mkdir -p "$(dirname "$DMG_PATH")"
 rm -f "$DMG_PATH"
 hdiutil create \
-  -volname "Easel" \
+  -volname "Unisyn" \
   -srcfolder "$STAGE" \
   -ov \
   -format UDZO \
