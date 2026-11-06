@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
 
-import 'app_state.dart';
-import 'pages/chat_page.dart';
-import 'pages/env_page.dart';
-import 'pages/settings_page.dart';
-import 'pages/video_page.dart';
+import 'shell/app_controller.dart';
+import 'shell/app_shell.dart';
+import 'theme/easel_theme.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -19,41 +17,23 @@ class EaselApp extends StatefulWidget {
 }
 
 class _EaselAppState extends State<EaselApp> {
-  final AppState _state = AppState();
-  int _index = 0;
-  bool _modelConfigured = true;
+  final AppController _controller = AppController();
 
   @override
   void initState() {
     super.initState();
-    _state.addListener(_onState);
-    _state.boot().then((_) => _refreshBootstrap());
+    _controller.addListener(_onChange);
+    _controller.boot();
   }
 
-  void _onState() {
+  void _onChange() {
     if (mounted) setState(() {});
-  }
-
-  Future<void> _refreshBootstrap() async {
-    final api = _state.api;
-    if (api == null) return;
-    try {
-      final boot = await api.bootstrap();
-      if (!mounted) return;
-      final ok = boot['modelConfigured'] == true;
-      setState(() {
-        _modelConfigured = ok;
-        if (!ok) _index = 3; // jump to settings
-      });
-    } catch (_) {
-      // settings page will surface its own errors
-    }
   }
 
   @override
   void dispose() {
-    _state.removeListener(_onState);
-    _state.shutdown();
+    _controller.removeListener(_onChange);
+    _controller.shutdown();
     super.dispose();
   }
 
@@ -62,71 +42,29 @@ class _EaselAppState extends State<EaselApp> {
     return MaterialApp(
       title: 'Easel',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF1F6F5B),
-          brightness: Brightness.light,
-        ),
-        useMaterial3: true,
-      ),
+      theme: buildEaselTheme(),
       home: Scaffold(
-        body: Row(
-          children: [
-            NavigationRail(
-              selectedIndex: _index,
-              onDestinationSelected: (i) => setState(() => _index = i),
-              labelType: NavigationRailLabelType.all,
-              destinations: [
-                const NavigationRailDestination(
-                  icon: Icon(Icons.chat_bubble_outline),
-                  selectedIcon: Icon(Icons.chat_bubble),
-                  label: Text('对话'),
-                ),
-                const NavigationRailDestination(
-                  icon: Icon(Icons.movie_outlined),
-                  selectedIcon: Icon(Icons.movie),
-                  label: Text('视频'),
-                ),
-                const NavigationRailDestination(
-                  icon: Icon(Icons.dns_outlined),
-                  selectedIcon: Icon(Icons.dns),
-                  label: Text('环境'),
-                ),
-                NavigationRailDestination(
-                  icon: Badge(
-                    isLabelVisible: !_modelConfigured,
-                    child: const Icon(Icons.settings_outlined),
-                  ),
-                  selectedIcon: Badge(
-                    isLabelVisible: !_modelConfigured,
-                    child: const Icon(Icons.settings),
-                  ),
-                  label: const Text('设置'),
-                ),
-              ],
-            ),
-            const VerticalDivider(width: 1),
-            Expanded(child: _body()),
-          ],
-        ),
+        // 让主区纸感径向背景透出来，避免 Scaffold 纯白盖住氛围层
+        backgroundColor: EaselColors.bg,
+        body: _body(),
       ),
     );
   }
 
   Widget _body() {
-    if (_state.booting) {
+    if (_controller.booting) {
       return const Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             CircularProgressIndicator(),
             SizedBox(height: 16),
-            Text('正在启动本地 FastAPI sidecar…'),
+            Text('正在启动本地 FastAPI sidecar…', style: TextStyle(color: EaselColors.textSecondary)),
           ],
         ),
       );
     }
-    if (_state.bootError != null || _state.api == null) {
+    if (_controller.bootError != null || _controller.api == null) {
       return Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 520),
@@ -135,34 +73,32 @@ class _EaselAppState extends State<EaselApp> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.error_outline, size: 48),
+                const Icon(Icons.error_outline, size: 48, color: EaselColors.red),
                 const SizedBox(height: 12),
                 Text(
-                  _state.bootError ?? '未知错误',
+                  _controller.bootError ?? '未知错误',
                   textAlign: TextAlign.center,
+                  style: const TextStyle(color: EaselColors.text),
                 ),
                 const SizedBox(height: 8),
-                Text(
+                const Text(
                   '请先运行 scripts/bundle_sidecar.sh，或设置 EASEL_VENDOR_ROOT。',
-                  style: Theme.of(context).textTheme.bodySmall,
+                  style: TextStyle(color: EaselColors.textSecondary, fontSize: 13),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 16),
                 FilledButton(
-                  onPressed: () async {
-                    await _state.boot();
-                    await _refreshBootstrap();
-                  },
+                  onPressed: _controller.boot,
                   child: const Text('重试'),
                 ),
-                if (_state.launcher != null) ...[
+                if (_controller.launcher != null) ...[
                   const SizedBox(height: 16),
                   SizedBox(
                     height: 160,
                     child: SingleChildScrollView(
                       child: Text(
-                        _state.launcher!.logText,
-                        style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
+                        _controller.launcher!.logText,
+                        style: const TextStyle(fontFamily: 'monospace', fontSize: 11, color: EaselColors.textSecondary),
                       ),
                     ),
                   ),
@@ -174,23 +110,6 @@ class _EaselAppState extends State<EaselApp> {
       );
     }
 
-    final api = _state.api!;
-    return IndexedStack(
-      index: _index,
-      children: [
-        ChatPage(api: api),
-        VideoPage(api: api),
-        EnvPage(api: api),
-        SettingsPage(
-          api: api,
-          banner: _modelConfigured
-              ? null
-              : '尚未配置可用模型鉴权（与 Web「设置 → 模型配置」相同）。请填写 OpenAI Key 或切换已配置底座后保存。',
-          onConfigured: () {
-            if (!_modelConfigured) setState(() => _modelConfigured = true);
-          },
-        ),
-      ],
-    );
+    return AppShell(controller: _controller);
   }
 }
