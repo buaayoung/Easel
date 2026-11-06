@@ -16,7 +16,11 @@ const _nav = <(AppPage, IconData, String)>[
 ];
 
 class EaselSidebar extends StatefulWidget {
-  const EaselSidebar({super.key, required this.controller, required this.theme});
+  const EaselSidebar({
+    super.key,
+    required this.controller,
+    required this.theme,
+  });
 
   final AppController controller;
   final ThemeController theme;
@@ -75,7 +79,7 @@ class _EaselSidebarState extends State<EaselSidebar> {
                 Row(
                   children: [
                     Image.asset(
-                      'assets/easel-icon-transparent.png',
+                      'assets/unisyn-icon-transparent.png',
                       width: 28,
                       height: 28,
                     ),
@@ -109,10 +113,7 @@ class _EaselSidebarState extends State<EaselSidebar> {
                       // ignore: deprecated_member_use — need controlled value when persona list changes
                       value: current,
                       dropdownColor: EaselColors.bgElev,
-                      style: TextStyle(
-                        color: EaselColors.text,
-                        fontSize: 13.5,
-                      ),
+                      style: TextStyle(color: EaselColors.text, fontSize: 13.5),
                       decoration: const InputDecoration(
                         isDense: true,
                         contentPadding: EdgeInsets.symmetric(

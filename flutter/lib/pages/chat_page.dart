@@ -17,12 +17,12 @@ String _greeting() {
   final g = h < 6
       ? '夜深了'
       : h < 12
-          ? '上午好'
-          : h < 14
-              ? '中午好'
-              : h < 18
-                  ? '下午好'
-                  : '晚上好';
+      ? '上午好'
+      : h < 14
+      ? '中午好'
+      : h < 18
+      ? '下午好'
+      : '晚上好';
   return '$g，想创作点什么？';
 }
 
@@ -80,19 +80,31 @@ class _ChatPageState extends State<ChatPage> {
             controller: _scroll,
             padding: const EdgeInsets.fromLTRB(24, 20, 24, 12),
             children: [
-              for (final m in session?.messages ?? const <ChatMessage>[]) _bubble(m),
+              for (final m in session?.messages ?? const <ChatMessage>[])
+                _bubble(m),
               if (c.stream != null) ...[
                 if (c.stream!.activity.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 8),
-                    child: Text(c.stream!.activity,
-                        style: TextStyle(fontSize: 12.5, color: EaselColors.textTertiary)),
+                    child: Text(
+                      c.stream!.activity,
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        color: EaselColors.textTertiary,
+                      ),
+                    ),
                   ),
-                _bubble(ChatMessage(
-                  role: 'assistant',
-                  content: c.stream!.content.isEmpty ? '…' : c.stream!.content,
-                  thinking: c.stream!.thinking.isEmpty ? null : c.stream!.thinking,
-                )),
+                _bubble(
+                  ChatMessage(
+                    role: 'assistant',
+                    content: c.stream!.content.isEmpty
+                        ? '…'
+                        : c.stream!.content,
+                    thinking: c.stream!.thinking.isEmpty
+                        ? null
+                        : c.stream!.thinking,
+                  ),
+                ),
               ],
             ],
           ),
@@ -107,7 +119,9 @@ class _ChatPageState extends State<ChatPage> {
 
   Widget _hero() {
     final direct = c.apiDirect;
-    final cards = _suggestions.where((s) => !direct || s.$2 == '写小红书文案' || s.$2 == '口播脚本');
+    final cards = _suggestions.where(
+      (s) => !direct || s.$2 == '写小红书文案' || s.$2 == '口播脚本',
+    );
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 720),
@@ -118,21 +132,42 @@ class _ChatPageState extends State<ChatPage> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Image.asset('assets/easel-icon-transparent.png', width: 36, height: 36),
+                  Image.asset(
+                    'assets/unisyn-icon-transparent.png',
+                    width: 36,
+                    height: 36,
+                  ),
                   const SizedBox(width: 10),
-                  Text('Unisyn',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: EaselColors.textSecondary)),
+                  Text(
+                    'Unisyn',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: EaselColors.textSecondary,
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: 18),
-              Text(_greeting(),
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w700, letterSpacing: -0.4)),
+              Text(
+                _greeting(),
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.4,
+                ),
+              ),
               const SizedBox(height: 8),
               Text(
-                direct ? 'API 直连：写文案、策划选题、分析附件。本机工具和自动发布未启用。' : '从选题到发布，一站式帮你把想法做成能发的内容。',
+                direct
+                    ? 'API 直连：写文案、策划选题、分析附件。本机工具和自动发布未启用。'
+                    : '从选题到发布，一站式帮你把想法做成能发的内容。',
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 14, color: EaselColors.textSecondary),
+                style: TextStyle(
+                  fontSize: 14,
+                  color: EaselColors.textSecondary,
+                ),
               ),
               const SizedBox(height: 22),
               _composer(hero: true),
@@ -146,31 +181,52 @@ class _ChatPageState extends State<ChatPage> {
                       width: 320,
                       child: Material(
                         color: EaselColors.surface,
-                        borderRadius: BorderRadius.circular(EaselColors.radiusLg),
+                        borderRadius: BorderRadius.circular(
+                          EaselColors.radiusLg,
+                        ),
                         child: InkWell(
-                          borderRadius: BorderRadius.circular(EaselColors.radiusLg),
+                          borderRadius: BorderRadius.circular(
+                            EaselColors.radiusLg,
+                          ),
                           onTap: () => _send(s.$3),
                           child: Container(
                             padding: const EdgeInsets.all(14),
                             decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(EaselColors.radiusLg),
+                              borderRadius: BorderRadius.circular(
+                                EaselColors.radiusLg,
+                              ),
                               border: Border.all(color: EaselColors.border),
                             ),
                             child: Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(s.$1, style: const TextStyle(fontSize: 20)),
+                                Text(
+                                  s.$1,
+                                  style: const TextStyle(fontSize: 20),
+                                ),
                                 const SizedBox(width: 10),
                                 Expanded(
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
-                                      Text(s.$2, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5)),
+                                      Text(
+                                        s.$2,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w600,
+                                          fontSize: 13.5,
+                                        ),
+                                      ),
                                       const SizedBox(height: 2),
-                                      Text(s.$3,
-                                          maxLines: 2,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: TextStyle(fontSize: 12, color: EaselColors.textSecondary)),
+                                      Text(
+                                        s.$3,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: EaselColors.textSecondary,
+                                        ),
+                                      ),
                                     ],
                                   ),
                                 ),
@@ -234,7 +290,10 @@ class _ChatPageState extends State<ChatPage> {
             children: [
               Text(
                 streaming ? '生成中…' : 'Enter 发送 · Shift+Enter 换行',
-                style: TextStyle(fontSize: 11.5, color: EaselColors.textTertiary),
+                style: TextStyle(
+                  fontSize: 11.5,
+                  color: EaselColors.textTertiary,
+                ),
               ),
               const Spacer(),
               // Web `.send-btn`: background var(--text); light icon=#fff, dark icon=var(--bg)
@@ -260,7 +319,9 @@ class _ChatPageState extends State<ChatPage> {
                       ],
                     ),
                     child: Icon(
-                      streaming ? Icons.stop_rounded : Icons.arrow_upward_rounded,
+                      streaming
+                          ? Icons.stop_rounded
+                          : Icons.arrow_upward_rounded,
                       size: 18,
                       color: EaselColors.isDark ? EaselColors.bg : Colors.white,
                     ),
@@ -280,12 +341,16 @@ class _ChatPageState extends State<ChatPage> {
       alignment: user ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
         margin: const EdgeInsets.only(bottom: 12),
-        constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.62),
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.sizeOf(context).width * 0.62,
+        ),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: user
             ? BoxDecoration(
                 // Web `.message-bubble.user` (+ dark override)
-                gradient: EaselColors.isDark ? null : EaselColors.accentGradientSoft,
+                gradient: EaselColors.isDark
+                    ? null
+                    : EaselColors.accentGradientSoft,
                 color: EaselColors.isDark ? EaselColors.accentSoft : null,
                 borderRadius: BorderRadius.only(
                   topLeft: Radius.circular(EaselColors.radiusLg),
@@ -321,8 +386,13 @@ class _ChatPageState extends State<ChatPage> {
                   color: EaselColors.accentSoft,
                   borderRadius: BorderRadius.circular(EaselColors.radius),
                 ),
-                child: Text(m.thinking!,
-                    style: TextStyle(fontSize: 12.5, color: EaselColors.textSecondary)),
+                child: Text(
+                  m.thinking!,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    color: EaselColors.textSecondary,
+                  ),
+                ),
               ),
             SelectableText(
               m.content,

@@ -24,4 +24,4 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
-    - assets/easel-icon-transparent.png
+    - assets/unisyn-icon-transparent.png
