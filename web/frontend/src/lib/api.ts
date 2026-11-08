@@ -850,11 +850,14 @@ export interface EnvTool {
   state: 'ok' | 'missing' | 'no_dir' | 'fail';
   version: string | null;
   detail: string | null;
+  path?: string | null;
   name: string;
   group: string;
   group_name?: string;
   desc: string;
   big?: boolean;
+  bundled?: boolean;
+  onDemand?: boolean;
 }
 
 export interface EnvToolsResponse {
@@ -865,6 +868,11 @@ export interface EnvToolsResponse {
 
 export function fetchEnvTools(refresh = false): Promise<EnvToolsResponse> {
   return request(`/api/env/tools${refresh ? '?refresh=1' : ''}`);
+}
+
+/** 在系统文件管理器中打开环境工具路径；id 为空或 model 则打开模型目录。 */
+export function revealEnv(id = ''): Promise<{ ok: boolean; id: string; absPath: string }> {
+  return request('/api/env/reveal', { method: 'POST', body: JSON.stringify({ id }) });
 }
 
 export interface EnvJobResult {

@@ -17,6 +17,7 @@ class _EnvPageState extends State<EnvPage> {
   bool _loading = true;
   String? _error;
   bool _packaged = false;
+  bool _hostEnv = false;
   String? _modelsDir;
   List<EnvTool> _tools = [];
   String? _busyId;
@@ -42,6 +43,7 @@ class _EnvPageState extends State<EnvPage> {
       setState(() {
         _tools = tools;
         _packaged = data['packaged'] == true;
+        _hostEnv = data['hostEnv'] == true;
         _modelsDir = data['modelsDir']?.toString();
         _loading = false;
       });
@@ -50,6 +52,17 @@ class _EnvPageState extends State<EnvPage> {
         _error = '$e';
         _loading = false;
       });
+    }
+  }
+
+  Future<void> _reveal([String id = '']) async {
+    try {
+      await widget.api.revealEnv(id);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('无法打开文件夹：$e')),
+      );
     }
   }
 
@@ -118,12 +131,19 @@ class _EnvPageState extends State<EnvPage> {
           child: Row(
             children: [
               Expanded(
-                child: Text(
+                child:                 Text(
                   _packaged
                       ? '打包模式：运行时已内置；仅大模型等按需下载'
-                      : '开发模式环境体检',
+                      : (_hostEnv
+                          ? '宿主机模式：使用本机 Python/Node 等；缺啥在此安装'
+                          : '开发模式环境体检'),
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
+              ),
+              IconButton(
+                tooltip: '打开模型目录',
+                onPressed: () => _reveal('model'),
+                icon: const Icon(Icons.folder_open_outlined),
               ),
               IconButton(onPressed: _reload, icon: const Icon(Icons.refresh)),
             ],
@@ -188,18 +208,27 @@ class _EnvPageState extends State<EnvPage> {
           if (tool.detail != null) tool.detail!,
           if (tool.big) '大件',
         ].where((e) => e.isNotEmpty).join(' · ')),
-        trailing: blockedBundled
-            ? Text(ok ? '内置' : '缺失', style: Theme.of(context).textTheme.labelMedium)
-            : canInstall
-                ? FilledButton.tonal(
-                    onPressed: (_busyId != null || ok && !tool.onDemand)
-                        ? null
-                        : () => _install(tool),
-                    child: Text(tool.id == 'model'
-                        ? (ok ? '已下载' : '下载模型')
-                        : (ok ? '已就绪' : '安装')),
-                  )
-                : null,
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              tooltip: '在文件目录打开',
+              onPressed: () => _reveal(tool.id),
+              icon: const Icon(Icons.folder_open_outlined, size: 18),
+            ),
+            if (blockedBundled)
+              Text(ok ? '内置' : '缺失', style: Theme.of(context).textTheme.labelMedium)
+            else if (canInstall)
+              FilledButton.tonal(
+                onPressed: (_busyId != null || ok && !tool.onDemand)
+                    ? null
+                    : () => _install(tool),
+                child: Text(tool.id == 'model'
+                    ? (ok ? '已下载' : '下载模型')
+                    : (ok ? '已就绪' : '安装')),
+              ),
+          ],
+        ),
       ),
     );
   }

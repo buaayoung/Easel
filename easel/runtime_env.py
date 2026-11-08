@@ -115,28 +115,40 @@ def _installation_directories(environment: dict[str, str], home: Path) -> list[P
 
 
 def _prepend_vendor_path(result: dict[str, str], path_key: str) -> dict[str, str]:
-    """Put EASEL_VENDOR_ROOT bin dirs first so bundled tools win over system PATH."""
+    """Put EASEL_DATA_DIR/bin + EASEL_VENDOR_ROOT bin dirs first on PATH."""
     from easel.vendor_paths import vendor_bin_dirs, vendor_root
 
-    root = vendor_root(result)
-    if root is None:
-        return result
-    bins = vendor_bin_dirs(root)
-    if not bins:
-        return result
     separator = ";" if WINDOWS else os.pathsep
     current_path = result.get(path_key, os.defpath)
     seen = {os.path.normcase(directory) for directory in current_path.split(separator) if directory}
     prefixes: list[str] = []
-    for directory in bins:
+
+    def _add(directory: Path) -> None:
+        try:
+            if not directory.is_dir():
+                directory.mkdir(parents=True, exist_ok=True)
+            if not directory.is_dir():
+                return
+        except OSError:
+            return
         key = os.path.normcase(str(directory))
         if key in seen:
-            continue
+            return
         seen.add(key)
         prefixes.append(str(directory))
+
+    data = (result.get("EASEL_DATA_DIR") or "").strip()
+    if data:
+        _add(Path(data).expanduser() / "bin")
+
+    root = vendor_root(result)
+    if root is not None:
+        for directory in vendor_bin_dirs(root):
+            _add(directory)
+        result.setdefault("EASEL_VENDOR_ROOT", str(root))
+
     if prefixes:
         result[path_key] = separator.join([*prefixes, current_path]) if current_path else separator.join(prefixes)
-    result.setdefault("EASEL_VENDOR_ROOT", str(root))
     return result
 
 

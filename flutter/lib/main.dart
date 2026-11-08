@@ -114,7 +114,8 @@ class _EaselAppState extends State<EaselApp> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  '请先运行 scripts/bundle_sidecar.sh，或设置 EASEL_VENDOR_ROOT。',
+                  '调试：scripts/ensure_dev_venv.sh。'
+                  '完整包：package_macos.sh；宿主机包：PACKAGE_MODE=host package_macos.sh。',
                   style: TextStyle(color: EaselColors.textSecondary, fontSize: 13),
                   textAlign: TextAlign.center,
                 ),

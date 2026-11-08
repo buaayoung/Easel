@@ -20,6 +20,8 @@ config/*.json.lock
 collectors/
 # setup.sh 默认把 Python 依赖装进项目内的 .venv（见 setup.sh 的虚拟环境分支）
 .venv/
+# Debug Flutter：Whisper 等大模型落在工程 models/（打包态仍用 Application Support）
+/models/
 
 # Docker
 docker/data/

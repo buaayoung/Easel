@@ -5,45 +5,32 @@
 - 应用名：`Unisyn`
 - Bundle ID：`com.jyyc.unisyn`
 
-## 前置
+## 调试 vs 打包
+
+| 场景 | Python / 依赖 |
+|------|----------------|
+| `flutter run -d macos` | 工程 **`.venv`**（uv）；模型 → 工程 **`models/`**。 |
+| `PACKAGE_MODE=full`（默认） | 可重定位 CPython + 依赖打进 `.app`；模型按需下到 Application Support。 |
+| `PACKAGE_MODE=host` | **轻量包**：只打源码。启动时用宿主机 `uv`/`python3`，缺 venv 则自动装到 Application Support；缺 node/ffmpeg 等会打开设置页安装。 |
 
 ```bash
-# 在仓库根目录组装 vendor（体积大；开发可用 SKIP_DOWNLOAD=1 链系统 node/ffmpeg）
-./scripts/bundle_sidecar.sh
-# 或
-SKIP_DOWNLOAD=1 ./scripts/bundle_sidecar.sh
-```
-
-可选：`export EASEL_VENDOR_ROOT=/绝对路径/dist/sidecar`
-
-## 运行（macOS）
-
-```bash
-cd flutter
-flutter pub get
-flutter run -d macos
+./scripts/ensure_dev_venv.sh
+cd flutter && flutter pub get && flutter run -d macos
 ```
 
 ## 打进 .app / .dmg
 
 ```bash
-# 一键：组装 sidecar → flutter build → 嵌入 .app → 打 DMG
+# 完整内置（体积大，离线可用）
 ./scripts/package_macos.sh
-# 输出：flutter/.../Unisyn.app 与 dist/Unisyn-<version>-macos.dmg
+# → dist/Unisyn-<ver>-macos.dmg
 
-# 已有 sidecar / Release .app 时可跳过耗时步骤：
-SKIP_BUNDLE=1 SKIP_FLUTTER_BUILD=1 ./scripts/package_macos.sh
+# 宿主机环境（体积小，首次启动安装 Python 依赖）
+PACKAGE_MODE=host ./scripts/package_macos.sh
+# → dist/Unisyn-<ver>-macos-host.dmg
+
+SKIP_BUNDLE=1 SKIP_FLUTTER_BUILD=1 PACKAGE_MODE=host ./scripts/package_macos.sh
 ```
-
-开发态也可先嵌入再手动 build：
-
-```bash
-./scripts/bundle_sidecar.sh
-./scripts/embed_sidecar_macos.sh
-cd flutter && flutter build macos
-```
-
-`embed_sidecar_macos.sh` 把 `dist/sidecar` 拷到 `macos/Runner/Resources/sidecar`，构建后位于 `Contents/Resources/sidecar`。
 
 ## 页面（对齐 Web）
 

@@ -1,9 +1,11 @@
 import type { ComponentType } from 'react';
 import type { EnvTool } from '../lib/api';
+import { revealEnv } from '../lib/api';
 import {
   IconHexagon, IconFilm, IconFileCode, IconAudioWaveform, IconDatabase,
   IconPackage, IconMonitor, IconTv, IconGlobe, IconCompass, IconLibrary,
 } from './settingsIcons';
+import { IconFolderOpen } from './icons';
 
 export interface JobView {
   state: 'running' | 'ok' | 'fail';
@@ -54,6 +56,14 @@ export default function EnvBoard({ tools, python, loading, error, jobs, anyRunni
     if (ids.length) void onInstallMany(ids);
   };
 
+  const openFolder = async (id = '') => {
+    try {
+      await revealEnv(id);
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : '无法打开文件夹');
+    }
+  };
+
   const view = (t: EnvTool): { state: 'ok' | 'missing' | 'busy' | 'fail' | 'nodir'; badge: string; cls: string } => {
     const job = jobs[t.id];
     if (job?.state === 'running') return { state: 'busy', badge: '安装中', cls: 'warn' };
@@ -74,6 +84,9 @@ export default function EnvBoard({ tools, python, loading, error, jobs, anyRunni
           装完自动校验{pid ? ` · 目标解释器 ${pid}` : ''} · 给其他机器＝整个目录拷过去
         </span>
         <span className="spacer" />
+        <button className="btn btn-sm" onClick={() => void openFolder('model')} title="打开模型目录">
+          <IconFolderOpen size={14} /> 模型目录
+        </button>
         <button className="btn btn-sm" onClick={onRefresh} disabled={loading || anyRunning}>
           {loading ? '检测中…' : '重新检测'}
         </button>
@@ -140,6 +153,13 @@ export default function EnvBoard({ tools, python, loading, error, jobs, anyRunni
                                   ? '需要指定工程目录'
                                   : ''}
                           </span>
+                          <button
+                            className="btn btn-sm"
+                            title={t.path || '打开所在文件夹'}
+                            onClick={() => void openFolder(t.id)}
+                          >
+                            <IconFolderOpen size={13} />
+                          </button>
                           {v.state === 'nodir' ? (
                             <button className="btn btn-sm" disabled title="需要 --dir 工程目录（随独立版内置）">需目录</button>
                           ) : v.state === 'fail' ? (

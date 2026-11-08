@@ -47,8 +47,15 @@ def whisper_large_v3_dir(environment: dict[str, str] | None = None) -> Path:
 
 
 def is_packaged(environment: dict[str, str] | None = None) -> bool:
-    """True when running inside a Flutter/app-bundle sidecar."""
+    """True when running inside a fully vendored Flutter/app-bundle sidecar.
+
+    ``EASEL_HOST_ENV=1`` (PACKAGE_MODE=host DMG) uses the host toolchain and
+    on-demand installs — not treated as packaged even if a lite vendor root exists.
+    """
     env = environment if environment is not None else os.environ
+    host = (env.get("EASEL_HOST_ENV") or "").strip().lower()
+    if host in ("1", "true", "yes", "on"):
+        return False
     flag = (env.get("EASEL_PACKAGED") or "").strip().lower()
     if flag in ("1", "true", "yes", "on"):
         return True
@@ -165,10 +172,11 @@ def remotion_blueprint_dir(root: Path | None = None) -> Path | None:
 # Tools that must not be installed system-wide when packaged; they are expected
 # to already live under EASEL_VENDOR_ROOT.
 PACKAGED_BUILTIN_TOOL_IDS = frozenset({
-    "node", "ffmpeg", "python", "fw", "pylibs",
+    "node", "ffmpeg", "python",
 })
 
-# Allowed on-demand installs even in packaged mode (large assets / writable dirs).
+# Allowed on-demand installs even in packaged mode (pip into vendor python,
+# large assets, writable dirs).
 PACKAGED_ON_DEMAND_TOOL_IDS = frozenset({
-    "model", "rmdeps", "shell", "pw", "cft", "biliup",
+    "model", "rmdeps", "shell", "pw", "cft", "biliup", "fw", "pylibs",
 })

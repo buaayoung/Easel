@@ -4,7 +4,7 @@
 
 | Path | Role |
 |------|------|
-| `python/` | venv with easel (`--no-deps`) + wheel-friendly runtime deps; `biliup`/`rembg` optional (sdists often hang) |
+| `python/` | **full 模式**：relocatable CPython（uv standalone）+ 正式安装的 `easel` wheel。**host 模式**不打 Python，首次启动用宿主机 uv/python 装到 Application Support。 |
 | `node/` | Node 24.x |
 | `openclaw/` | private `npm install --prefix` tree |
 | `ffmpeg/bin/` | ffmpeg / ffprobe |

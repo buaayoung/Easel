@@ -1671,8 +1671,24 @@ def _env_tool_subprocess_env() -> dict[str, str]:
     return web_environment(dict(os.environ))
 
 
+def _repo_remotion_blueprint() -> Path | None:
+    """Debug checkout: skills/.../deps/remotion under EASEL_ROOT / PROJECT_ROOT."""
+    for base in (PROJECT_ROOT, Path((os.environ.get("EASEL_ROOT") or "").strip() or ".")):
+        try:
+            root = base.expanduser().resolve()
+        except OSError:
+            root = Path(base).expanduser()
+        cand = (
+            root / "skills" / "builtin" / "video-production" / "vendor"
+            / "video-pipeline-sdk" / "deps" / "remotion"
+        )
+        if (cand / "package.json").is_file():
+            return cand
+    return None
+
+
 def _remotion_workdir() -> Path | None:
-    """打包态 Remotion 可写工程：显式 env > Application Support 拷贝 > vendor 蓝本。"""
+    """Remotion 工程目录：显式 env > Application Support 拷贝 > vendor 蓝本 > 仓库 skills 蓝本。"""
     raw = (os.environ.get("EASEL_REMOTION_DIR") or "").strip()
     if raw:
         path = Path(raw).expanduser()
@@ -1683,7 +1699,7 @@ def _remotion_workdir() -> Path | None:
         cand = Path(writable).expanduser() / "remotion-projects" / "blueprint"
         if (cand / "package.json").is_file():
             return cand
-    return remotion_blueprint_dir()
+    return remotion_blueprint_dir() or _repo_remotion_blueprint()
 
 
 def _install_tool_python() -> str:
@@ -1734,7 +1750,11 @@ async def api_env_tools(refresh: bool = False):
     except json.JSONDecodeError as e:
         raise HTTPException(500, f"体检输出解析失败：{e}")
     packaged = is_packaged()
+    host_env = (os.environ.get("EASEL_HOST_ENV") or "").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
     data["packaged"] = packaged
+    data["hostEnv"] = host_env
     data["modelsDir"] = str(whisper_large_v3_dir().parent)
     if packaged:
         for tool in data.get("tools") or []:
@@ -4511,6 +4531,75 @@ def api_outputs_reveal(req: RevealOutputRequest):
     except OSError as e:
         raise HTTPException(500, f'无法打开文件目录：{e}')
     return {"ok": True, "path": rel or ".", "absPath": str(full)}
+
+
+class RevealEnvRequest(BaseModel):
+    """打开环境工具所在文件夹；id 为空则打开模型目录父级（EASEL_MODELS_DIR）。"""
+    id: str = ""
+
+
+_INSTALL_TOOL_MOD = None
+
+
+def _load_install_tool_module():
+    """Load install_tool.py once. Must register in sys.modules before exec —
+    dataclasses look up the module dict and fail with AttributeError otherwise."""
+    global _INSTALL_TOOL_MOD
+    if _INSTALL_TOOL_MOD is not None:
+        return _INSTALL_TOOL_MOD
+    import importlib.util
+    name = "_easel_install_tool"
+    spec = importlib.util.spec_from_file_location(name, INSTALL_TOOL)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"无法加载 {INSTALL_TOOL}")
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[name] = mod
+    spec.loader.exec_module(mod)
+    _INSTALL_TOOL_MOD = mod
+    return mod
+
+
+@app.post("/api/env/reveal")
+def api_env_reveal(req: RevealEnvRequest):
+    """桌面端：在系统文件管理器中打开环境工具 / 模型目录。"""
+    tid = (req.id or "").strip()
+    py = _install_tool_python()
+    workdir = _remotion_workdir()
+    workdir_s = str(workdir) if workdir else None
+    target: Path | None = None
+    if not tid or tid == "model":
+        target = whisper_large_v3_dir()
+        if not target.exists():
+            target = target.parent
+            target.mkdir(parents=True, exist_ok=True)
+    else:
+        try:
+            mod = _load_install_tool_module()
+            tool = next((t for t in mod.TOOLS if t.id == tid), None)
+            if tool is None:
+                raise HTTPException(404, f"未知工具：{tid}")
+            raw = mod.resolve_tool_path(tool, py, workdir_s)
+            if not raw:
+                checked = mod.check_tool(tool, py, workdir_s)
+                raw = checked.get("path")
+            if raw:
+                target = Path(str(raw))
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(500, f"解析路径失败：{e}")
+    if target is None:
+        raise HTTPException(404, "找不到该工具的本地路径（可能尚未安装）")
+    # If the exact file is not there yet, open the parent (install destination).
+    if not target.exists():
+        parent = target.parent
+        parent.mkdir(parents=True, exist_ok=True)
+        target = parent
+    try:
+        _reveal_in_file_manager(target)
+    except OSError as e:
+        raise HTTPException(500, f"无法打开文件目录：{e}")
+    return {"ok": True, "id": tid or "model", "absPath": str(target)}
 
 
 @app.post("/api/upload")

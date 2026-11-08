@@ -39,35 +39,120 @@ need tar
 rm -rf "$OUT"
 mkdir -p "$OUT"/{python,node,openclaw,ffmpeg/bin,remotion-blueprint,web,easel-root}
 
-# ── Python: venv with project + FastAPI stack (no Whisper weights) ──────────
-# Do NOT `pip install -e .` with full pyproject deps: biliup (and similar) ship
-# sdists only and routinely hang on "Preparing metadata (pyproject.toml)".
-# Install the easel package with --no-deps, then a curated wheel-friendly set.
-log "Python vendor venv"
+# ── Python: relocatable CPython + site-packages (no Whisper weights) ───────
+# CRITICAL for DMG/.app:
+#   1) Do NOT use a Homebrew/system `python3 -m venv` — bin/python becomes a
+#      symlink into /opt/homebrew and breaks on other machines.
+#   2) Do NOT `pip install -e` — editable .pth points at the build-machine
+#      source tree and disappears after install.
+# Prefer astral uv's python-build-standalone (libpython via @executable_path).
+PYTHON_VERSION="${EASEL_BUNDLE_PYTHON_VERSION:-3.13.9}"
 PIP_INDEX="${EASEL_PIP_INDEX:-https://pypi.tuna.tsinghua.edu.cn/simple}"
-python3 -m venv "$OUT/python"
-# shellcheck disable=SC1091
-source "$OUT/python/bin/activate"
-pip install -U pip wheel setuptools >/dev/null
-pip install -e "$ROOT" --no-deps -i "$PIP_INDEX"
-pip install \
+case "$NODE_PLATFORM" in
+  darwin-arm64) UV_PYTHON_KEY="cpython-${PYTHON_VERSION}-macos-aarch64-none" ;;
+  darwin-x64)   UV_PYTHON_KEY="cpython-${PYTHON_VERSION}-macos-x86_64-none" ;;
+  linux-x64)    UV_PYTHON_KEY="cpython-${PYTHON_VERSION}-linux-x86_64-gnu" ;;
+  linux-arm64)  UV_PYTHON_KEY="cpython-${PYTHON_VERSION}-linux-aarch64-gnu" ;;
+  *) echo "No standalone Python mapping for $NODE_PLATFORM" >&2; exit 1 ;;
+esac
+
+install_relocatable_python() {
+  local dest="$1"
+  rm -rf "$dest"
+  mkdir -p "$dest"
+  if command -v uv >/dev/null 2>&1; then
+    # Same interpreter series as scripts/ensure_dev_venv.sh — uv cache hit, no re-download.
+    log "Standalone Python $PYTHON_VERSION via uv ($UV_PYTHON_KEY; reuse local cache if present)"
+    uv python install "$PYTHON_VERSION" >/dev/null
+    local py bin_dir src
+    py="$(uv python find "$PYTHON_VERSION")"
+    bin_dir="$(cd "$(dirname "$py")" && pwd)"
+    src="$(cd "$bin_dir/.." && pwd)"
+    # Copy into the app bundle — do NOT ship repo .venv (symlinks to build machine).
+    rsync -a "$src/" "$dest/"
+  else
+    log "uv missing — falling back to system venv (NOT relocatable; DMG will break)"
+    python3 -m venv "$dest"
+  fi
+  # Refuse to ship a python that still points outside the vendor tree.
+  local entry
+  for entry in "$dest/bin/python3" "$dest/bin/python" "$dest/python.exe"; do
+    [[ -e "$entry" ]] || continue
+    if [[ -L "$entry" ]]; then
+      local target
+      target="$(readlink "$entry" || true)"
+      if [[ "$target" == /* && "$target" != "$dest"/* ]]; then
+        echo "ERROR: $entry → $target (absolute external symlink; not shippable)" >&2
+        exit 1
+      fi
+    fi
+  done
+  # uv/standalone marks the prefix EXTERNALLY-MANAGED; we own this copy inside
+  # the app bundle and must be able to pip-install into it.
+  find "$dest" -name EXTERNALLY-MANAGED -delete 2>/dev/null || true
+}
+
+log "Python vendor runtime"
+install_relocatable_python "$OUT/python"
+VENDOR_PY="$OUT/python/bin/python3"
+[[ -x "$VENDOR_PY" ]] || VENDOR_PY="$OUT/python/bin/python"
+[[ -x "$VENDOR_PY" ]] || { echo "ERROR: vendor python missing under $OUT/python" >&2; exit 1; }
+
+# Ignore ~/.local site-packages during build/verify (editable checkouts shadow vendor).
+export PYTHONNOUSERSITE=1
+"$VENDOR_PY" -m ensurepip --upgrade >/dev/null 2>&1 || true
+"$VENDOR_PY" -m pip install -U pip wheel setuptools -i "$PIP_INDEX" >/dev/null
+# Wheel install (not `pip install -e` / not path install) so easel is copied into site-packages.
+rm -rf "$OUT/_wheels"
+mkdir -p "$OUT/_wheels"
+"$VENDOR_PY" -m pip wheel "$ROOT" -w "$OUT/_wheels" --no-deps -i "$PIP_INDEX"
+"$VENDOR_PY" -m pip install --no-deps --force-reinstall "$OUT/_wheels"/easel-*.whl
+rm -rf "$OUT/_wheels"
+"$VENDOR_PY" -m pip install \
   'fastapi>=0.115,<1' 'uvicorn[standard]>=0.30,<1' 'sse-starlette>=2.1,<4' \
   'httpx>=0.27,<1' 'pydantic>=2.7,<3' 'segno>=1.6,<2' 'python-multipart>=0.0.9,<1' \
   'Pillow>=10,<13' 'opencv-python>=4.8,<5' 'numpy>=1.26,<3' \
   'PyMuPDF>=1.26.7,<2' 'pandas>=2,<4' 'matplotlib>=3.8,<4' 'librosa>=0.10,<1' \
   'faster-whisper>=1,<2' 'huggingface_hub' 'edge-tts>=6,<8' 'playwright>=1.45,<2' \
   'jieba>=0.42,<1' 'snownlp>=0.12,<1' 'markdown>=3.5,<4' \
-  'requests>=2.32,<3' 'beautifulsoup4>=4.12,<5' \
+  'requests>=2.32,<3' 'beautifulsoup4>=4.12,<5' 'pdfplumber>=0.11,<1' \
   'websocket-client>=1.7,<2' 'cryptography>=42' \
   -i "$PIP_INDEX"
 # Optional / sdist-heavy: skip on failure so the sidecar still builds.
-for opt in 'rembg>=2.0,<3' 'biliup>=1,<2'; do
+# Note: PyPI `biliup` no longer ships the CLI (stream_gears API only). The
+# desktop settings panel installs the official biliupR binary on demand.
+for opt in 'rembg>=2.0,<3'; do
   log "Optional pip: $opt"
-  if ! pip install "$opt" -i "$PIP_INDEX"; then
+  if ! "$VENDOR_PY" -m pip install "$opt" -i "$PIP_INDEX"; then
     echo "WARN: skipped $opt (sidecar core still usable)" >&2
   fi
 done
-deactivate
+
+# Disable user site inside the shipped interpreter (Flutter also sets PYTHONNOUSERSITE).
+mkdir -p "$OUT/python/lib/python${PYTHON_VERSION%.*}/site-packages" 2>/dev/null || true
+SITE_CUSTOMIZE="$(find "$OUT/python/lib" -type d -name site-packages 2>/dev/null | head -1)/sitecustomize.py"
+if [[ -n "${SITE_CUSTOMIZE:-}" && -d "$(dirname "$SITE_CUSTOMIZE")" ]]; then
+  cat > "$SITE_CUSTOMIZE" <<'PY'
+"""Unisyn vendor Python: never import from the user's ~/.local site-packages."""
+import site
+site.ENABLE_USER_SITE = False
+PY
+fi
+
+# Hard gate: import from vendor site-packages (cd away from repo so ./easel 不抢先).
+(
+  cd "$OUT/python"
+  PYTHONNOUSERSITE=1 "$VENDOR_PY" - <<'PY'
+import easel, fastapi, PIL, edge_tts, requests, pdfplumber, sys
+from pathlib import Path
+root = Path(sys.prefix).resolve()
+eaself = Path(easel.__file__).resolve()
+if root not in eaself.parents and not str(eaself).startswith(str(root)):
+    raise SystemExit(f"easel not inside vendor prefix: {eaself} (prefix={root})")
+print("vendor python ok:", sys.executable)
+print("easel:", eaself)
+PY
+)
 
 # ── Node ────────────────────────────────────────────────────────────────────
 NODE_TGZ="node-v${NODE_VERSION}-${NODE_PLATFORM}.tar.gz"
@@ -155,6 +240,8 @@ cat > "$OUT/MANIFEST.json" <<EOF
   "createdAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "platform": "$NODE_PLATFORM",
   "nodeVersion": "$NODE_VERSION",
+  "pythonVersion": "$PYTHON_VERSION",
+  "pythonKey": "$UV_PYTHON_KEY",
   "whisperBundled": false,
   "layout": ["python", "node", "openclaw", "ffmpeg", "remotion-blueprint", "web", "easel-root"]
 }

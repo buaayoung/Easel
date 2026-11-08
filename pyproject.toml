@@ -20,7 +20,7 @@ dependencies = [
     "PyMuPDF>=1.26.7,<2",       # 论文原图截图与论文视频资产提取
     "pandas>=2,<4", "matplotlib>=3.8,<4", "librosa>=0.10,<1",
     "faster-whisper>=1,<2", "edge-tts>=6,<8", "playwright>=1.45,<2",
-    "rembg>=2.0,<3", "biliup>=1,<2", "jieba>=0.42,<1", "snownlp>=0.12,<1",
+    "jieba>=0.42,<1", "snownlp>=0.12,<1",
     "markdown>=3.5,<4",
     "requests>=2.32,<3", "beautifulsoup4>=4.12,<5",
     # ask_user 问答题桥接（easel/gateway_questions.py）：连本地 gateway WS RPC + Ed25519 设备签名
@@ -28,6 +28,10 @@ dependencies = [
     "websocket-client>=1.7,<2",
     "cryptography>=42",
 ]
+
+# rembg / biliup：sdist 重、常装失败；打 sidecar 时作可选安装，不进核心依赖以免 pip 冲突噪音。
+[project.optional-dependencies]
+extras = ["rembg>=2.0,<3", "biliup>=1,<2"]
 
 [project.scripts]
 easel = "easel.cli:main"

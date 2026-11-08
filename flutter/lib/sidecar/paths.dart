@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
@@ -12,6 +14,7 @@ class EaselPaths {
     required this.modelsDir,
     required this.openclawStateDir,
     this.devRepoMode = false,
+    this.hostEnvMode = false,
   });
 
   final Directory vendorRoot;
@@ -20,14 +23,45 @@ class EaselPaths {
   final Directory modelsDir;
   final Directory openclawStateDir;
 
-  /// When true, use system/current Python against the git checkout (no dist/sidecar).
+  /// Debug/profile against the git checkout + project `.venv`.
   final bool devRepoMode;
 
+  /// Release DMG built with `PACKAGE_MODE=host`: bundled source, host toolchain,
+  /// Application Support venv bootstrapped on first launch.
+  final bool hostEnvMode;
+
+  /// Uses host tools (dev checkout or host-mode DMG), not a relocatable vendor Python.
+  bool get usesHostRuntime => devRepoMode || hostEnvMode;
+
   Directory get pythonBinDir => Directory(p.join(vendorRoot.path, 'python', 'bin'));
+
+  /// Host-mode venv under Application Support (created by [HostBootstrap]).
+  File get hostVenvPython => File(
+        p.join(
+          dataDir.path,
+          'venv',
+          Platform.isWindows ? r'Scripts\python.exe' : 'bin/python',
+        ),
+      );
+
   File get pythonExe {
     if (devRepoMode) {
       final fromEnv = Platform.environment['EASEL_PYTHON'];
       if (fromEnv != null && fromEnv.isNotEmpty) return File(fromEnv);
+      final venvPy = File(
+        p.join(
+          easelRoot.path,
+          '.venv',
+          Platform.isWindows ? r'Scripts\python.exe' : 'bin/python',
+        ),
+      );
+      if (venvPy.existsSync()) return venvPy;
+      return File(Platform.isWindows ? 'python' : 'python3');
+    }
+    if (hostEnvMode) {
+      final fromEnv = Platform.environment['EASEL_PYTHON'];
+      if (fromEnv != null && fromEnv.isNotEmpty) return File(fromEnv);
+      if (hostVenvPython.existsSync()) return hostVenvPython;
       return File(Platform.isWindows ? 'python' : 'python3');
     }
     final name = Platform.isWindows ? 'python.exe' : 'python';
@@ -38,14 +72,15 @@ class EaselPaths {
     return primary;
   }
 
+  /// Bare interpreter name resolved via PATH (host runtime before venv exists).
+  bool get pythonResolvedViaPath =>
+      usesHostRuntime && !pythonExe.path.contains(Platform.pathSeparator);
+
   File get webApp {
     if (devRepoMode) return File(p.join(easelRoot.path, 'web', 'app.py'));
     return File(p.join(vendorRoot.path, 'web', 'app.py'));
   }
 
-  /// Prefer an existing CLI profile (`~/.openclaw-easel`) that already has
-  /// device identity / openclaw.json. A fresh Application Support folder has
-  /// neither, and OpenClaw then fails with "Cannot load device identity".
   static Directory resolveOpenclawStateDir(Directory dataDir) {
     final override = Platform.environment['EASEL_OPENCLAW_STATE_DIR'];
     if (override != null && override.trim().isNotEmpty) {
@@ -70,15 +105,27 @@ class EaselPaths {
     return fallback;
   }
 
+  static bool _isHostRuntimeBundle(Directory root) {
+    if (File(p.join(root.path, '.runtime-host')).existsSync()) return true;
+    final manifest = File(p.join(root.path, 'MANIFEST.json'));
+    if (!manifest.existsSync()) return false;
+    try {
+      final data = jsonDecode(manifest.readAsStringSync());
+      if (data is Map && '${data['runtime']}' == 'host') return true;
+    } catch (_) {}
+    return false;
+  }
+
   static Future<EaselPaths> resolve() async {
     final resolved = await _resolveVendorOrRepo();
     final support = await getApplicationSupportDirectory();
     final dataDir = Directory(p.join(support.path, 'Easel'));
-    final modelsDir = Directory(p.join(dataDir.path, 'models'));
     if (!dataDir.existsSync()) dataDir.createSync(recursive: true);
-    if (!modelsDir.existsSync()) modelsDir.createSync(recursive: true);
     final openclawStateDir = resolveOpenclawStateDir(dataDir);
+
     if (resolved.devRepoMode) {
+      final modelsDir = Directory(p.join(resolved.root.path, 'models'));
+      if (!modelsDir.existsSync()) modelsDir.createSync(recursive: true);
       return EaselPaths(
         vendorRoot: resolved.root,
         easelRoot: resolved.root,
@@ -88,6 +135,9 @@ class EaselPaths {
         devRepoMode: true,
       );
     }
+
+    final modelsDir = Directory(p.join(dataDir.path, 'models'));
+    if (!modelsDir.existsSync()) modelsDir.createSync(recursive: true);
     final easelRoot = Directory(p.join(resolved.root.path, 'easel-root'));
     return EaselPaths(
       vendorRoot: resolved.root,
@@ -95,51 +145,83 @@ class EaselPaths {
       dataDir: dataDir,
       modelsDir: modelsDir,
       openclawStateDir: openclawStateDir,
+      hostEnvMode: resolved.hostEnvMode,
     );
   }
 
-  static Future<({Directory root, bool devRepoMode})> _resolveVendorOrRepo() async {
+  static Future<({Directory root, bool devRepoMode, bool hostEnvMode})>
+      _resolveVendorOrRepo() async {
     final fromEnv = Platform.environment['EASEL_VENDOR_ROOT'];
     if (fromEnv != null && fromEnv.isNotEmpty) {
       final d = Directory(fromEnv);
-      if (d.existsSync()) return (root: d, devRepoMode: false);
+      if (d.existsSync()) {
+        return (
+          root: d,
+          devRepoMode: false,
+          hostEnvMode: _isHostRuntimeBundle(d),
+        );
+      }
     }
 
-    // Packaged macOS: Contents/Resources/sidecar
-    final exe = File(Platform.resolvedExecutable);
-    final contents = exe.parent.parent; // .../Contents/MacOS -> Contents
-    final bundled = Directory(p.join(contents.path, 'Resources', 'sidecar'));
-    if (bundled.existsSync()) return (root: bundled, devRepoMode: false);
+    final preferHostRepo = !kReleaseMode &&
+        Platform.environment['EASEL_FORCE_VENDOR'] != '1';
+    if (preferHostRepo || Platform.environment['EASEL_DEV_REPO'] == '1') {
+      final repo = _findRepoRoot();
+      if (repo != null) {
+        return (root: repo, devRepoMode: true, hostEnvMode: false);
+      }
+    }
 
-    // Xcode/Flutter resource copy location during debug
-    final runnerResources = Directory(p.join(
-      Directory.current.path,
-      'macos',
-      'Runner',
-      'Resources',
-      'sidecar',
-    ));
-    if (runnerResources.existsSync()) {
-      return (root: runnerResources, devRepoMode: false);
+    // Packaged Release / DMG: Contents/Resources/sidecar
+    final exe = File(Platform.resolvedExecutable);
+    final contents = exe.parent.parent;
+    final bundled = Directory(p.join(contents.path, 'Resources', 'sidecar'));
+    if (bundled.existsSync() &&
+        File(p.join(bundled.path, 'web', 'app.py')).existsSync()) {
+      return (
+        root: bundled,
+        devRepoMode: false,
+        hostEnvMode: _isHostRuntimeBundle(bundled),
+      );
     }
 
     for (final cursor in _searchRoots()) {
-      final candidate = Directory(p.join(cursor.path, 'dist', 'sidecar'));
-      if (candidate.existsSync() &&
-          File(p.join(candidate.path, 'web', 'app.py')).existsSync()) {
-        return (root: candidate, devRepoMode: false);
+      for (final name in ['sidecar-host', 'sidecar']) {
+        final candidate = Directory(p.join(cursor.path, 'dist', name));
+        if (candidate.existsSync() &&
+            File(p.join(candidate.path, 'web', 'app.py')).existsSync()) {
+          return (
+            root: candidate,
+            devRepoMode: false,
+            hostEnvMode: _isHostRuntimeBundle(candidate),
+          );
+        }
       }
-      final repoApp = File(p.join(cursor.path, 'web', 'app.py'));
-      final repoPkg = File(p.join(cursor.path, 'easel', 'vendor_paths.py'));
-      if (repoApp.existsSync() && repoPkg.existsSync()) {
-        return (root: cursor, devRepoMode: true);
+      final repo = _repoAt(cursor);
+      if (repo != null) {
+        return (root: repo, devRepoMode: true, hostEnvMode: false);
       }
     }
 
     throw StateError(
-      'EASEL_VENDOR_ROOT not found. Run scripts/bundle_sidecar.sh '
-      'or open the app from the Easel repo / set EASEL_VENDOR_ROOT.',
+      'Easel checkout / packaged sidecar not found. '
+      'Run scripts/package_macos.sh (PACKAGE_MODE=full|host) or flutter run from the repo.',
     );
+  }
+
+  static Directory? _findRepoRoot() {
+    for (final cursor in _searchRoots()) {
+      final repo = _repoAt(cursor);
+      if (repo != null) return repo;
+    }
+    return null;
+  }
+
+  static Directory? _repoAt(Directory cursor) {
+    final repoApp = File(p.join(cursor.path, 'web', 'app.py'));
+    final repoPkg = File(p.join(cursor.path, 'easel', 'vendor_paths.py'));
+    if (repoApp.existsSync() && repoPkg.existsSync()) return cursor;
+    return null;
   }
 
   static Iterable<Directory> _searchRoots() sync* {

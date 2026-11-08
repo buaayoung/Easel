@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 
@@ -71,6 +73,7 @@ class AppController extends ChangeNotifier {
         await refreshStatus();
         await refreshPersonas();
         await _checkBootstrap();
+        await _maybePromptHostEnvInstall();
       }
     } catch (e) {
       bootError = '$e';
@@ -104,6 +107,46 @@ class AppController extends ChangeNotifier {
     try {
       final boot = await a.bootstrap();
       modelConfigured = boot['modelConfigured'] == true;
+    } catch (_) {}
+  }
+
+  /// Host-mode DMG: check core tools; missing ones are installed automatically.
+  Future<void> _maybePromptHostEnvInstall() async {
+    final a = api;
+    final p = paths;
+    if (a == null || p == null || !p.hostEnvMode) return;
+    try {
+      final data = await a.envTools(refresh: true);
+      final tools = (data['tools'] as List? ?? []).whereType<Map>();
+      // python/pylibs already handled by HostBootstrap venv; focus on host CLIs.
+      const critical = ['node', 'ffmpeg'];
+      final missing = <String>[
+        for (final id in critical)
+          if (tools.any((t) => '${t['id']}' == id && t['state'] != 'ok')) id,
+      ];
+      if (missing.isEmpty) return;
+      settingsOpen = true;
+      notifyListeners();
+      unawaited(_autoInstallHostTools(missing));
+    } catch (_) {}
+  }
+
+  Future<void> _autoInstallHostTools(List<String> ids) async {
+    final a = api;
+    if (a == null) return;
+    for (final id in ids) {
+      try {
+        final jobId = await a.installTool(id);
+        while (true) {
+          final job = await a.installJob(jobId);
+          final state = '${job['state']}';
+          if (state == 'ok' || state == 'fail') break;
+          await Future<void>.delayed(const Duration(milliseconds: 800));
+        }
+      } catch (_) {}
+    }
+    try {
+      await a.envTools(refresh: true);
     } catch (_) {}
   }
 

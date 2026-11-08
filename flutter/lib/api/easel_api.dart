@@ -13,6 +13,10 @@ class EnvTool {
   String get state => '${json['state'] ?? 'missing'}';
   String? get version => json['version']?.toString();
   String? get detail => json['detail']?.toString();
+  String? get path {
+    final v = json['path']?.toString().trim();
+    return (v == null || v.isEmpty) ? null : v;
+  }
   bool get big => json['big'] == true;
   bool get bundled => json['bundled'] == true;
   bool get onDemand => json['onDemand'] == true || id == 'model';
@@ -153,6 +157,10 @@ class EaselApi {
 
   Future<Map<String, dynamic>> envTools({bool refresh = false}) =>
       _get('/api/env/tools', {'refresh': refresh ? '1' : '0'});
+
+  /// Open tool install location in Finder/Explorer; empty [id] opens models dir.
+  Future<Map<String, dynamic>> revealEnv([String id = '']) =>
+      _post('/api/env/reveal', {'id': id});
 
   Future<String> installTool(String id, {String? dir}) async {
     final data = await _post('/api/env/install', {

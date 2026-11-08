@@ -6,6 +6,7 @@ import 'dart:math';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 
+import 'host_bootstrap.dart';
 import 'paths.dart';
 
 enum SidecarState { stopped, starting, ready, failed }
@@ -29,11 +30,27 @@ class SidecarLauncher {
     lastError = null;
     _log.clear();
 
-    final python = paths.pythonExe;
+    var python = paths.pythonExe;
     final app = paths.webApp;
-    if (!python.existsSync()) {
+
+    if (paths.hostEnvMode) {
+      _log.writeln('hostEnvMode: bootstrapping Application Support venv…');
+      final boot = HostBootstrap(paths);
+      final result = await boot.ensure();
+      _log.write(result.log);
+      if (result.error != null || result.python == null) {
+        state = SidecarState.failed;
+        lastError = result.error ?? '宿主机环境安装失败';
+        return;
+      }
+      python = result.python!;
+    }
+
+    if (!paths.pythonResolvedViaPath && !python.existsSync()) {
       state = SidecarState.failed;
-      lastError = 'Vendor Python missing: ${python.path}';
+      lastError = paths.usesHostRuntime
+          ? 'Python missing: ${python.path}'
+          : 'Vendor Python missing: ${python.path}';
       return;
     }
     if (!app.existsSync()) {
@@ -43,16 +60,15 @@ class SidecarLauncher {
     }
 
     port = await _pickFreePort();
-    final env = Map<String, String>.from(Platform.environment);
+    final env = paths.hostEnvMode
+        ? HostBootstrap(paths).hostEnvironment()
+        : Map<String, String>.from(Platform.environment);
     env['EASEL_ROOT'] = paths.easelRoot.path;
     env['EASEL_MODELS_DIR'] = paths.modelsDir.path;
     env['EASEL_OPENCLAW_STATE_DIR'] = paths.openclawStateDir.path;
     env['EASEL_DATA_DIR'] = paths.dataDir.path;
     env['EASEL_PORT'] = '$port';
     env['EASEL_CHAT_TRANSPORT'] = env['EASEL_CHAT_TRANSPORT'] ?? 'http';
-    // OpenClaw macOS SQLite staging uses $XDG_CACHE_HOME/openclaw (else
-    // ~/Library/Caches, often EPERM under Flutter). Keep both cache + tmp
-    // inside the app sandbox.
     final tmpDir = Directory(p.join(paths.dataDir.path, 'tmp'));
     final cacheDir = Directory(p.join(paths.dataDir.path, 'cache'));
     final openclawCache = Directory(p.join(cacheDir.path, 'openclaw'));
@@ -65,31 +81,66 @@ class SidecarLauncher {
     env['TMPDIR'] = tmpDir.path;
     env['TMP'] = tmpDir.path;
     env['TEMP'] = tmpDir.path;
+
     if (paths.devRepoMode) {
       env.remove('EASEL_PACKAGED');
-      // Keep any developer-set vendor; otherwise leave unset for PATH discovery.
+      env.remove('EASEL_VENDOR_ROOT');
+      env.remove('EASEL_HOST_ENV');
+      env.remove('PYTHONNOUSERSITE');
+    } else if (paths.hostEnvMode) {
+      env['EASEL_HOST_ENV'] = '1';
+      env.remove('EASEL_PACKAGED');
+      env.remove('PYTHONNOUSERSITE');
+      // Point remotion / skill assets at the lite bundle without forcing packaged installs.
+      env['EASEL_VENDOR_ROOT'] = paths.vendorRoot.path;
+      final remotion = Directory(p.join(paths.vendorRoot.path, 'remotion-blueprint'));
+      if (remotion.existsSync()) {
+        env['EASEL_REMOTION_DIR'] = remotion.path;
+      }
     } else {
       env['EASEL_VENDOR_ROOT'] = paths.vendorRoot.path;
       env['EASEL_PACKAGED'] = '1';
+      env.remove('EASEL_HOST_ENV');
+      env['PYTHONNOUSERSITE'] = '1';
     }
 
-    // Skill scripts use `#!/usr/bin/env python3` — pin vendor interpreter + PATH.
-    if (python.existsSync() && python.path.contains(Platform.pathSeparator)) {
+    if (!paths.pythonResolvedViaPath && python.existsSync()) {
       env['EASEL_PYTHON'] = python.path;
     }
 
     final pathKey = Platform.isWindows ? 'Path' : 'PATH';
     final sep = Platform.isWindows ? ';' : ':';
-    final prefixes = <String>[
-      p.join(paths.vendorRoot.path, 'ffmpeg', 'bin'),
-      p.join(paths.vendorRoot.path, 'node', 'bin'),
-      p.join(paths.vendorRoot.path, 'node'),
-      p.join(paths.vendorRoot.path, 'openclaw', 'node_modules', '.bin'),
-      p.join(paths.vendorRoot.path, 'python', 'bin'),
-      p.join(paths.vendorRoot.path, 'python', 'Scripts'),
-    ].where((d) => Directory(d).existsSync()).toList();
-    if (prefixes.isNotEmpty) {
-      env[pathKey] = [...prefixes, env[pathKey] ?? ''].join(sep);
+    final dataBin = Directory(p.join(paths.dataDir.path, 'bin'));
+    if (!dataBin.existsSync()) dataBin.createSync(recursive: true);
+    final prefixes = <String>[dataBin.path];
+    if (paths.devRepoMode) {
+      final venvBin = Directory(
+        p.join(
+          paths.easelRoot.path,
+          '.venv',
+          Platform.isWindows ? 'Scripts' : 'bin',
+        ),
+      );
+      if (venvBin.existsSync()) prefixes.add(venvBin.path);
+    } else if (paths.hostEnvMode) {
+      final venvBin = Directory(
+        p.join(paths.dataDir.path, 'venv', Platform.isWindows ? 'Scripts' : 'bin'),
+      );
+      if (venvBin.existsSync()) prefixes.add(venvBin.path);
+    } else {
+      prefixes.addAll([
+        p.join(paths.vendorRoot.path, 'bin'),
+        p.join(paths.vendorRoot.path, 'ffmpeg', 'bin'),
+        p.join(paths.vendorRoot.path, 'node', 'bin'),
+        p.join(paths.vendorRoot.path, 'node'),
+        p.join(paths.vendorRoot.path, 'openclaw', 'node_modules', '.bin'),
+        p.join(paths.vendorRoot.path, 'python', 'bin'),
+        p.join(paths.vendorRoot.path, 'python', 'Scripts'),
+      ]);
+    }
+    final existing = prefixes.where((d) => Directory(d).existsSync()).toList();
+    if (existing.isNotEmpty) {
+      env[pathKey] = [...existing, env[pathKey] ?? ''].join(sep);
     }
 
     _log.writeln('Starting sidecar on :$port');
@@ -98,10 +149,11 @@ class SidecarLauncher {
     _log.writeln('vendor=${paths.vendorRoot.path}');
     _log.writeln('easelRoot=${paths.easelRoot.path}');
     _log.writeln('devRepoMode=${paths.devRepoMode}');
+    _log.writeln('hostEnvMode=${paths.hostEnvMode}');
 
-    final pythonCmd = paths.devRepoMode && !python.path.contains(Platform.pathSeparator)
-        ? python.path // bare "python3" — resolve via PATH
-        : python.path;
+    final useShell = paths.usesHostRuntime &&
+        (paths.pythonResolvedViaPath || paths.hostEnvMode);
+    final pythonCmd = paths.pythonResolvedViaPath ? python.path : python.path;
 
     try {
       _process = await Process.start(
@@ -109,7 +161,7 @@ class SidecarLauncher {
         [app.path],
         workingDirectory: paths.easelRoot.path,
         environment: env,
-        runInShell: paths.devRepoMode,
+        runInShell: useShell && paths.pythonResolvedViaPath,
       );
     } catch (e) {
       state = SidecarState.failed;
@@ -136,7 +188,10 @@ class SidecarLauncher {
       }
     }));
 
-    final ok = await _waitHealthy(timeout: const Duration(seconds: 45));
+    final healthTimeout = paths.hostEnvMode
+        ? const Duration(seconds: 90)
+        : const Duration(seconds: 45);
+    final ok = await _waitHealthy(timeout: healthTimeout);
     if (ok) {
       state = SidecarState.ready;
     } else {
@@ -185,7 +240,6 @@ class SidecarLauncher {
     final server = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
     final port = server.port;
     await server.close();
-    // Prefer a stable-ish high port when possible for logs; still unique.
     if (port > 1024) return port;
     return 17000 + Random().nextInt(2000);
   }

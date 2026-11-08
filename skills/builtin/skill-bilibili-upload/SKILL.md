@@ -16,7 +16,7 @@ layer: publish
 
 | 依赖 | 说明 |
 |------|------|
-| biliup CLI | `pip install biliup`（Rust 后端投稿工具） |
+| biliup CLI | 设置面板「环境」安装 biliup（官方 biliupR 二进制；PyPI 轮子不再带 CLI） |
 | B站 cookie | 首次需 `login` 扫码登录生成（默认 `cookies.json`），之后复用 |
 | 外网 | 登录与投稿需访问 B站 |
 
