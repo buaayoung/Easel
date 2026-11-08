@@ -54,6 +54,23 @@ typedef StreamTokenCb = void Function(String chunk);
 typedef StreamDoneCb = void Function(String? sessionKey);
 typedef StreamErrorCb = void Function(Object err);
 
+/// Web `UploadedFile` / `AdoptedFile` — `{ id, name, path }`.
+class UploadedFile {
+  const UploadedFile({required this.id, required this.name, required this.path});
+
+  final String id;
+  final String name;
+  final String path;
+
+  Map<String, dynamic> toJson() => {'id': id, 'name': name, 'path': path};
+
+  factory UploadedFile.fromJson(Map<String, dynamic> j) => UploadedFile(
+        id: '${j['id'] ?? ''}',
+        name: '${j['name'] ?? ''}',
+        path: '${j['path'] ?? ''}',
+      );
+}
+
 class EaselApi {
   EaselApi(this.baseUrl);
 
@@ -213,12 +230,61 @@ class EaselApi {
     required String message,
     String? sessionId,
     String? persona,
+    List<UploadedFile> attachments = const [],
   }) =>
       _post('/api/chat', {
         'message': message,
         if (sessionId != null) 'sessionId': sessionId,
         if (persona != null && persona.isNotEmpty) 'persona': persona,
+        if (attachments.isNotEmpty)
+          'attachments': attachments.map((a) => a.toJson()).toList(),
       });
+
+  /// Web `GET /api/upload/limits` → `{ max_mb }`.
+  Future<int> uploadMaxMb() async {
+    try {
+      final m = await _get('/api/upload/limits');
+      final v = m['max_mb'];
+      if (v is num) return v.toInt();
+    } catch (_) {}
+    return 50;
+  }
+
+  /// Web `POST /api/upload` or `/api/upload/local` (multipart `files` + `sessionId`).
+  Future<List<UploadedFile>> uploadFiles(
+    List<String> filePaths,
+    String sessionId, {
+    bool local = false,
+  }) async {
+    if (filePaths.isEmpty) return const [];
+    final req = http.MultipartRequest(
+      'POST',
+      _u(local ? '/api/upload/local' : '/api/upload'),
+    );
+    req.fields['sessionId'] = sessionId;
+    for (final p in filePaths) {
+      req.files.add(await http.MultipartFile.fromPath('files', p));
+    }
+    final streamed = await req.send();
+    final body = await streamed.stream.bytesToString();
+    if (streamed.statusCode < 200 || streamed.statusCode >= 300) {
+      var detail = '上传失败 (${streamed.statusCode})';
+      try {
+        final m = jsonDecode(body);
+        if (m is Map && m['detail'] != null) detail = '${m['detail']}';
+      } catch (_) {
+        if (body.trim().isNotEmpty) detail = body.trim();
+      }
+      throw StateError(detail);
+    }
+    final decoded = jsonDecode(body);
+    final files = decoded is Map ? decoded['files'] : null;
+    if (files is! List) return const [];
+    return files
+        .whereType<Map>()
+        .map((e) => UploadedFile.fromJson(Map<String, dynamic>.from(e)))
+        .toList();
+  }
 
   /// SSE chat stream. Returns a cancel callback.
   Future<void> Function() streamChat({
@@ -226,6 +292,7 @@ class EaselApi {
     required String sessionId,
     String? persona,
     String? turnId,
+    List<UploadedFile> attachments = const [],
     required StreamTokenCb onToken,
     void Function(String chunk)? onThinking,
     void Function(String status)? onActivity,
@@ -246,6 +313,8 @@ class EaselApi {
           'sessionId': sessionId,
           if (persona != null && persona.isNotEmpty) 'persona': persona,
           if (turnId != null) 'turnId': turnId,
+          if (attachments.isNotEmpty)
+            'attachments': attachments.map((a) => a.toJson()).toList(),
         });
         final res = await client.send(req);
         if (res.statusCode < 200 || res.statusCode >= 300) {
@@ -422,6 +491,10 @@ class EaselApi {
 
   Future<Map<String, dynamic>> deleteOutput(String path) =>
       _delete('/api/output/${path.split('/').map(Uri.encodeComponent).join('/')}');
+
+  /// Open [path] (outputs-relative) in Finder/Explorer; empty = outputs root.
+  Future<Map<String, dynamic>> revealOutput([String path = '']) =>
+      _post('/api/outputs/reveal', {'path': path});
 
   String mediaUrl(String path) =>
       '$baseUrl/api/media/${path.split('/').map(Uri.encodeComponent).join('/')}';

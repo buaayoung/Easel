@@ -49,7 +49,7 @@ layer: produce
 ## Profile 感知
 
 - **有 Profile**:从 `style.md` 读品牌配色/风格倾向;但**优先保证本系统的高级感底线**——若 Profile 没给明确视觉规范,就按本系统选立场+锁色,别退回"柔和渐变"这类模糊描述。account 名用作水印。
-- **无 Profile**:知识/科技类默认「瑞士 + 克莱因蓝」或「杂志 + Indigo Porcelain」;生活/情感类默认「杂志 + Kraft/Dune 暖纸」。
+- **无 Profile**:知识/科技类默认「瑞士 + 克莱因蓝」或「杂志 + Indigo Porcelain」;生活/情感类默认「杂志 + Kraft/Dune 暖纸」。角标/页脚品牌水印默认写 **Unisyn**（可带月份，如 `Unisyn • 2026-11`），禁止写 Easel 或其他内部项目名。
 
 ## 参考来源
 

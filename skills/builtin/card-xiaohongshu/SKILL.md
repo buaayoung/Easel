@@ -34,12 +34,12 @@ layer: produce
 - **禁**：深蓝/蓝紫科技渐变、渐变文字、玻璃拟态、emoji 当图标、居中一切、大标题用粗黑体、`flex:1` 顶出的底部死空白。（详见 `anti-ai-slop.md`）
 - **填满**：内容覆盖 ≥75% 画高，任何无理由空白带 >15% 判失败。内容少就扩内容/换省高骨架/换 1:1，别留死空白。（详见 `layout-laws.md`）
 - 图标用线性图标(Lucide 风格,stroke 1.5)或纯排版，不用 emoji。字号大、对比强、行距宽（手机可读，正文 ≥28px）。
-- 每张卡片角落小水印（作者名 / 日期）。
+- 每张卡片角落小水印（作者名 / 日期；无作者时用 **Unisyn**）。
 
 ## Profile 感知
 
 - **有 Profile**：从 `style.md` 读品牌配色和风格偏好（但仍遵守 card-design 的高级感底线，别退回"柔和渐变"这类模糊描述），从 `identity.md` 读账号名用作水印
-- **无 Profile**：按 card-design 默认——知识/科技类默认瑞士+克莱因蓝或杂志+Indigo Porcelain，生活/情感类默认杂志暖纸系，水印留空
+- **无 Profile**：按 card-design 默认——知识/科技类默认瑞士+克莱因蓝或杂志+Indigo Porcelain，生活/情感类默认杂志暖纸系；水印默认 **Unisyn**（可带月份），禁止写 Easel
 
 ## 与其他卡片 SKILL 的区别
 

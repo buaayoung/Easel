@@ -65,6 +65,7 @@
 制作流程：凝练 Profile → 明确主题/规格/风格/受众/红线/输出 → 按 SKILL 产出 → 自检 → 仅失败时返工一次。
 
 - Profile 读取 `identity.md`、`style.md`、`audience.md`、`preferences.md`、`memory.md`；制作层不读 `platforms.md`，并原样遵守 preferences 红线。
+- **品牌水印**：卡片/海报/配图角标默认写 **Unisyn**（有 Profile 时优先用账号名）。禁止把内部项目名 Easel 印到用户可见成品上。
 - 一个项目使用 `outputs/<主题>/`；成品放项目目录根，中间素材放其 `assets/`，测试放 `outputs/_scratch/`。
 - 主题必须是人类可读的具体项目名，禁止 `xhs/test/tmp/output`等泛名，禁止在 `outputs/` 根目录散落内容文件。写入前先用 `python skills/shared/scripts/output_paths.py outputs/<主题>/<文件>` 校验；脚本自带该门禁时不重复调用。
 - 制作前明确 SKILL、主题、规格、风格、受众、结构、红线、特殊要求和输出路径；不要只复述用户原话就开工。

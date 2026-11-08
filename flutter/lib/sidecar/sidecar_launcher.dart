@@ -73,23 +73,30 @@ class SidecarLauncher {
       env['EASEL_PACKAGED'] = '1';
     }
 
+    // Skill scripts use `#!/usr/bin/env python3` — pin vendor interpreter + PATH.
+    if (python.existsSync() && python.path.contains(Platform.pathSeparator)) {
+      env['EASEL_PYTHON'] = python.path;
+    }
+
     final pathKey = Platform.isWindows ? 'Path' : 'PATH';
     final sep = Platform.isWindows ? ';' : ':';
-    if (!paths.devRepoMode) {
-      final prefixes = <String>[
-        p.join(paths.vendorRoot.path, 'ffmpeg', 'bin'),
-        p.join(paths.vendorRoot.path, 'node', 'bin'),
-        p.join(paths.vendorRoot.path, 'node'),
-        p.join(paths.vendorRoot.path, 'openclaw', 'node_modules', '.bin'),
-        p.join(paths.vendorRoot.path, 'python', 'bin'),
-        p.join(paths.vendorRoot.path, 'python', 'Scripts'),
-      ].where((d) => Directory(d).existsSync()).toList();
+    final prefixes = <String>[
+      p.join(paths.vendorRoot.path, 'ffmpeg', 'bin'),
+      p.join(paths.vendorRoot.path, 'node', 'bin'),
+      p.join(paths.vendorRoot.path, 'node'),
+      p.join(paths.vendorRoot.path, 'openclaw', 'node_modules', '.bin'),
+      p.join(paths.vendorRoot.path, 'python', 'bin'),
+      p.join(paths.vendorRoot.path, 'python', 'Scripts'),
+    ].where((d) => Directory(d).existsSync()).toList();
+    if (prefixes.isNotEmpty) {
       env[pathKey] = [...prefixes, env[pathKey] ?? ''].join(sep);
     }
 
     _log.writeln('Starting sidecar on :$port');
     _log.writeln('python=${python.path}');
+    _log.writeln('EASEL_PYTHON=${env['EASEL_PYTHON'] ?? ''}');
     _log.writeln('vendor=${paths.vendorRoot.path}');
+    _log.writeln('easelRoot=${paths.easelRoot.path}');
     _log.writeln('devRepoMode=${paths.devRepoMode}');
 
     final pythonCmd = paths.devRepoMode && !python.path.contains(Platform.pathSeparator)

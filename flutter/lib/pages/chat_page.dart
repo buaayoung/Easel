@@ -1,6 +1,14 @@
+import 'dart:io';
+
+import 'package:desktop_drop/desktop_drop.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:pasteboard/pasteboard.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 
+import '../api/easel_api.dart';
 import '../models/chat_session.dart';
 import '../shell/app_controller.dart';
 import '../theme/easel_theme.dart';
@@ -38,23 +46,84 @@ class ChatPage extends StatefulWidget {
 class _ChatPageState extends State<ChatPage> {
   final _input = TextEditingController();
   final _scroll = ScrollController();
-  final _focus = FocusNode();
+  late final FocusNode _focus = FocusNode(onKeyEvent: _onFocusKey);
+
+  final List<UploadedFile> _attachments = [];
+  bool _uploading = false;
+  bool _dragOver = false;
+  int _maxMb = 50;
 
   AppController get c => widget.controller;
 
   @override
+  void initState() {
+    super.initState();
+    c.addListener(_onController);
+    c.streamListenable.addListener(_onStreamTick);
+    _loadLimits();
+  }
+
+  void _onController() {
+    if (mounted) setState(() {});
+  }
+
+  void _onStreamTick() {
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _loadLimits() async {
+    final api = c.api;
+    if (api == null) return;
+    try {
+      final mb = await api.uploadMaxMb();
+      if (mounted) setState(() => _maxMb = mb);
+    } catch (_) {}
+  }
+
+  @override
   void dispose() {
+    c.removeListener(_onController);
+    c.streamListenable.removeListener(_onStreamTick);
     _input.dispose();
     _scroll.dispose();
     _focus.dispose();
     super.dispose();
   }
 
+  KeyEventResult _onFocusKey(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    final meta =
+        HardwareKeyboard.instance.isMetaPressed ||
+        HardwareKeyboard.instance.isControlPressed;
+    if (meta && event.logicalKey == LogicalKeyboardKey.keyV) {
+      _pasteFiles();
+      // Still allow text paste into the field.
+      return KeyEventResult.ignored;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.enter &&
+        !HardwareKeyboard.instance.isShiftPressed) {
+      _send();
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
   Future<void> _send([String? preset]) async {
     final text = (preset ?? _input.text).trim();
-    if (text.isEmpty || c.stream != null) return;
-    if (preset == null) _input.clear();
-    await c.sendChat(text);
+    final atts = List<UploadedFile>.of(_attachments);
+    if ((text.isEmpty && atts.isEmpty) || c.stream != null || _uploading)
+      return;
+    if (preset == null) {
+      _input.clear();
+      setState(() => _attachments.clear());
+    }
+    await c.sendChat(
+      text,
+      attachments: [
+        for (final a in atts)
+          ChatAttachment(id: a.id, name: a.name, path: a.path),
+      ],
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scroll.hasClients) {
         _scroll.animateTo(
@@ -64,6 +133,78 @@ class _ChatPageState extends State<ChatPage> {
         );
       }
     });
+  }
+
+  Future<void> _pickFiles() async {
+    if (c.stream != null || _uploading) return;
+    final result = await FilePicker.platform.pickFiles(allowMultiple: true);
+    if (result == null || result.paths.isEmpty) return;
+    final paths = result.paths.whereType<String>().toList();
+    await _uploadPaths(paths);
+  }
+
+  Future<void> _pasteFiles() async {
+    if (c.stream != null || _uploading) return;
+    try {
+      final files = await Pasteboard.files();
+      if (files.isNotEmpty) {
+        await _uploadPaths(files);
+        return;
+      }
+      final bytes = await Pasteboard.image;
+      if (bytes == null || bytes.isEmpty) return;
+      final dir = await getTemporaryDirectory();
+      final file = File(
+        p.join(dir.path, 'paste-${DateTime.now().millisecondsSinceEpoch}.png'),
+      );
+      await file.writeAsBytes(bytes, flush: true);
+      await _uploadPaths([file.path]);
+    } catch (_) {
+      /* clipboard may have text only */
+    }
+  }
+
+  Future<void> _uploadPaths(List<String> paths) async {
+    final api = c.api;
+    final session = c.activeSession;
+    if (api == null || session == null || paths.isEmpty) return;
+
+    final cap = _maxMb * 1024 * 1024;
+    final big = <String>[];
+    final small = <String>[];
+    for (final path in paths) {
+      try {
+        final size = await File(path).length();
+        if (size > cap) {
+          big.add(path);
+        } else {
+          small.add(path);
+        }
+      } catch (_) {
+        small.add(path);
+      }
+    }
+
+    setState(() => _uploading = true);
+    try {
+      if (big.isNotEmpty) {
+        final saved = await api.uploadFiles(big, session.id, local: true);
+        if (mounted) setState(() => _attachments.addAll(saved));
+      }
+      if (small.isNotEmpty) {
+        final saved = await api.uploadFiles(small, session.id);
+        if (mounted) setState(() => _attachments.addAll(saved));
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+    } finally {
+      if (mounted) setState(() => _uploading = false);
+    }
+  }
+
+  void _removeAttachment(String path) {
+    setState(() => _attachments.removeWhere((a) => a.path == path));
   }
 
   @override
@@ -247,88 +388,207 @@ class _ChatPageState extends State<ChatPage> {
 
   Widget _composer({required bool hero}) {
     final streaming = c.stream != null;
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
-      decoration: BoxDecoration(
-        color: EaselColors.bgElev,
-        borderRadius: BorderRadius.circular(EaselColors.radiusXl),
-        border: Border.all(color: EaselColors.border),
-        boxShadow: hero ? EaselColors.shadowMd : null,
-      ),
-      child: Column(
-        children: [
-          KeyboardListener(
-            focusNode: FocusNode(),
-            onKeyEvent: (e) {
-              if (e is KeyDownEvent &&
-                  e.logicalKey == LogicalKeyboardKey.enter &&
-                  !HardwareKeyboard.instance.isShiftPressed) {
-                _send();
-              }
-            },
-            child: TextField(
+    final canSend =
+        (_input.text.trim().isNotEmpty || _attachments.isNotEmpty) &&
+        !streaming &&
+        !_uploading;
+
+    return DropTarget(
+      onDragEntered: (_) => setState(() => _dragOver = true),
+      onDragExited: (_) => setState(() => _dragOver = false),
+      onDragDone: (detail) async {
+        setState(() => _dragOver = false);
+        final paths = detail.files
+            .map((f) => f.path)
+            .where((p) => p.isNotEmpty)
+            .toList();
+        if (paths.isNotEmpty) await _uploadPaths(paths);
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 140),
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
+        decoration: BoxDecoration(
+          color: _dragOver ? EaselColors.accentSoft : EaselColors.bgElev,
+          borderRadius: BorderRadius.circular(EaselColors.radiusXl),
+          border: Border.all(
+            color: _dragOver ? EaselColors.accentStart : EaselColors.border,
+            width: _dragOver ? 1.5 : 1,
+          ),
+          boxShadow: _dragOver
+              ? [
+                  BoxShadow(
+                    color: EaselColors.accentStart.withValues(alpha: 0.22),
+                    blurRadius: 24,
+                    offset: const Offset(0, 8),
+                  ),
+                ]
+              : (hero ? EaselColors.shadowMd : null),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (_attachments.isNotEmpty) ...[
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [for (final a in _attachments) _attachChip(a)],
+              ),
+              const SizedBox(height: 8),
+            ],
+            TextField(
               controller: _input,
               focusNode: _focus,
               minLines: hero ? 2 : 1,
               maxLines: 6,
               enabled: !streaming,
+              onChanged: (_) => setState(() {}),
               decoration: InputDecoration(
-                hintText: hero
-                    ? '把你的想法告诉我，选题 / 文案 / 卡片 / 视频 / 发布都行…'
-                    : '发消息…（Enter 发送，Shift+Enter 换行）',
+                hintText: _dragOver
+                    ? '松手上传素材…'
+                    : hero
+                    ? '把你的想法告诉我，选题 / 文案 / 卡片 / 视频 / 发布都行…（可拖入图片/文档当素材）'
+                    : '发消息…（Enter 发送，Shift+Enter 换行，可拖入/粘贴素材）',
                 border: InputBorder.none,
                 enabledBorder: InputBorder.none,
                 focusedBorder: InputBorder.none,
                 filled: false,
                 contentPadding: EdgeInsets.zero,
               ),
-              onSubmitted: (_) => _send(),
             ),
-          ),
-          const SizedBox(height: 6),
-          Row(
-            children: [
-              Text(
-                streaming ? '生成中…' : 'Enter 发送 · Shift+Enter 换行',
-                style: TextStyle(
-                  fontSize: 11.5,
-                  color: EaselColors.textTertiary,
-                ),
-              ),
-              const Spacer(),
-              // Web `.send-btn`: background var(--text); light icon=#fff, dark icon=var(--bg)
-              Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: streaming ? c.stopChat : () => _send(),
-                  borderRadius: BorderRadius.circular(10),
-                  child: Ink(
-                    width: 34,
-                    height: 34,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(10),
-                      color: EaselColors.text,
-                      boxShadow: [
-                        BoxShadow(
-                          color: EaselColors.isDark
-                              ? const Color(0x33000000)
-                              : const Color(0x2E17191C),
-                          blurRadius: 10,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Tooltip(
+                  message: '添加素材（图片/文档）；超过 ${_maxMb}MB 的大文件将自动存为本地素材（不走上传）',
+                  child: OutlinedButton.icon(
+                    onPressed: streaming || _uploading ? null : _pickFiles,
+                    icon: Icon(
+                      Icons.add,
+                      size: 15,
+                      color: streaming || _uploading
+                          ? EaselColors.textTertiary
+                          : EaselColors.textSecondary,
                     ),
-                    child: Icon(
-                      streaming
-                          ? Icons.stop_rounded
-                          : Icons.arrow_upward_rounded,
-                      size: 18,
-                      color: EaselColors.isDark ? EaselColors.bg : Colors.white,
+                    label: Text(
+                      _uploading ? '上传中…' : '素材',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: streaming || _uploading
+                            ? EaselColors.textTertiary
+                            : EaselColors.textSecondary,
+                      ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 9,
+                        vertical: 3,
+                      ),
+                      minimumSize: const Size(0, 28),
+                      side: BorderSide(color: EaselColors.border),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(7),
+                      ),
+                      backgroundColor: Colors.transparent,
+                      foregroundColor: EaselColors.textSecondary,
+                      disabledForegroundColor: EaselColors.textTertiary,
                     ),
                   ),
                 ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    streaming ? '生成中…' : 'Enter 发送 · Shift+Enter 换行',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      color: EaselColors.textTertiary,
+                    ),
+                  ),
+                ),
+                Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: streaming
+                        ? c.stopChat
+                        : (canSend ? () => _send() : null),
+                    borderRadius: BorderRadius.circular(10),
+                    child: Opacity(
+                      opacity: streaming || canSend ? 1 : 0.35,
+                      child: Ink(
+                        width: 34,
+                        height: 34,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(10),
+                          color: EaselColors.text,
+                          boxShadow: [
+                            BoxShadow(
+                              color: EaselColors.isDark
+                                  ? const Color(0x33000000)
+                                  : const Color(0x2E17191C),
+                              blurRadius: 10,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Icon(
+                          streaming
+                              ? Icons.stop_rounded
+                              : Icons.arrow_upward_rounded,
+                          size: 18,
+                          color: EaselColors.isDark
+                              ? EaselColors.bg
+                              : Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _attachChip(UploadedFile a) {
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 220),
+      padding: const EdgeInsets.fromLTRB(8, 3, 4, 3),
+      decoration: BoxDecoration(
+        color: EaselColors.surfaceHover,
+        borderRadius: BorderRadius.circular(7),
+        border: Border.all(color: EaselColors.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.insert_drive_file_outlined,
+            size: 12,
+            color: EaselColors.textSecondary,
+          ),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(
+              a.name,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 12, color: EaselColors.textSecondary),
+            ),
+          ),
+          InkWell(
+            onTap: () => _removeAttachment(a.path),
+            borderRadius: BorderRadius.circular(4),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Text(
+                '×',
+                style: TextStyle(
+                  fontSize: 15,
+                  height: 1,
+                  color: EaselColors.textTertiary,
+                ),
               ),
-            ],
+            ),
           ),
         ],
       ),
@@ -347,7 +607,6 @@ class _ChatPageState extends State<ChatPage> {
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: user
             ? BoxDecoration(
-                // Web `.message-bubble.user` (+ dark override)
                 gradient: EaselColors.isDark
                     ? null
                     : EaselColors.accentGradientSoft,
@@ -394,16 +653,25 @@ class _ChatPageState extends State<ChatPage> {
                   ),
                 ),
               ),
-            SelectableText(
-              m.content,
-              style: TextStyle(
-                fontSize: 14,
-                height: 1.55,
-                color: user && !EaselColors.isDark
-                    ? const Color(0xFF303238)
-                    : EaselColors.text,
+            if (m.content.isNotEmpty)
+              SelectableText(
+                m.content,
+                style: TextStyle(
+                  fontSize: 14,
+                  height: 1.55,
+                  color: user && !EaselColors.isDark
+                      ? const Color(0xFF303238)
+                      : EaselColors.text,
+                ),
+              )
+            else if ((m.attachments ?? const []).isNotEmpty)
+              Text(
+                '已附 ${(m.attachments ?? const []).map((a) => a.name).join('、')}',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: EaselColors.textSecondary,
+                ),
               ),
-            ),
           ],
         ),
       ),

@@ -587,32 +587,59 @@ def _should_autostart_gateway() -> bool:
     return is_packaged() or bool((os.environ.get("EASEL_VENDOR_ROOT") or "").strip())
 
 
+def _align_workspace_for_sidecar() -> None:
+    """把 OpenClaw workspace 的 outputs/profiles 指回当前 EASEL_ROOT。
+
+    xhs-note-creator 等 skill 写 ``outputs/…`` 时落在 workspace 软链目标；
+    Flutter 内容库读的是 ``$EASEL_ROOT/outputs``。两边不一致就会「skill 说写了，库里没有」。
+    """
+    try:
+        from easel.skills_sync import align_workspace_links
+
+        notes = align_workspace_links()
+        for note in notes:
+            print(f"[workspace] {note}", file=sys.stderr, flush=True)
+    except Exception as e:  # noqa: BLE001
+        print(f"[workspace] 对齐 outputs 链接失败：{e}", file=sys.stderr, flush=True)
+
+
 def _start_gateway_sync() -> None:
     """Best-effort：后台起 gateway（带上 sidecar 的 TMPDIR / vendor PATH）。"""
     if _direct_api_enabled():
         return
+    running = False
     try:
-        if check_gateway():
-            return
+        running = bool(check_gateway())
     except Exception:  # noqa: BLE001
-        pass
+        running = False
+    # Flutter / vendor 打包态：已在跑的 gateway 往往还带着系统 PATH（找不到 vendor python）。
+    # 有 EASEL_VENDOR_ROOT 时强制 restart，让 agent 子进程继承 vendor PATH。
+    need_vendor_env = is_packaged() or bool((os.environ.get("EASEL_VENDOR_ROOT") or "").strip())
+    if running and not need_vendor_env:
+        return
     script = PROJECT_ROOT / "scripts" / ("gateway.ps1" if os.name == "nt" else "gateway.sh")
     if not script.is_file():
         print(f"[gateway] 找不到启动脚本：{script}", file=sys.stderr, flush=True)
         return
-    cmd = (["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script), "start"]
-           if os.name == "nt" else ["bash", str(script), "start"])
+    action = "restart" if running else "start"
+    cmd = (["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script), action]
+           if os.name == "nt" else ["bash", str(script), action])
     try:
         from easel.runtime_env import apply_private_tmpdir, web_environment
+        from easel.vendor_paths import vendor_python
 
         env = apply_private_tmpdir(web_environment(dict(os.environ)))
+        bundled = vendor_python()
+        if bundled is not None:
+            env["EASEL_PYTHON"] = str(bundled)
         # gateway.sh 冷启动可到 ~60s；这里只触发、不阻塞 lifespan
         subprocess.Popen(
             cmd, cwd=str(PROJECT_ROOT), env=env,
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             start_new_session=True,
         )
-        print("[gateway] 已后台启动 OpenClaw gateway（chat 依赖它）", file=sys.stderr, flush=True)
+        print(f"[gateway] 已后台{action} OpenClaw gateway（chat / skill 依赖它）",
+              file=sys.stderr, flush=True)
     except Exception as e:  # noqa: BLE001
         print(f"[gateway] 自动启动失败：{e}", file=sys.stderr, flush=True)
 
@@ -622,6 +649,7 @@ async def _lifespan(_app: FastAPI):
     """应用生命周期：可选自动起 gateway；关机时回收公众号扫码进程。"""
     global _HARNESS_LOOP
     _HARNESS_LOOP = asyncio.get_running_loop()
+    await asyncio.to_thread(_align_workspace_for_sidecar)
     if _should_autostart_gateway():
         await asyncio.to_thread(_start_gateway_sync)
     yield
@@ -4450,6 +4478,39 @@ async def api_output_delete(path: str):
     except OSError as e:
         raise HTTPException(500, f'删除失败：{e}')
     return {"ok": True, "deleted": path, "kind": "dir" if is_dir else "file"}
+
+
+class RevealOutputRequest(BaseModel):
+    """在系统文件管理器中打开内容库路径；path 为空则打开 outputs 根目录。"""
+    path: str = ""
+
+
+def _reveal_in_file_manager(full: Path) -> None:
+    """在 Finder / Explorer / 文件管理器中打开目录，或选中文件。"""
+    target = full.resolve()
+    if sys.platform == "darwin":
+        cmd = ["open", str(target)] if target.is_dir() else ["open", "-R", str(target)]
+    elif sys.platform == "win32":
+        cmd = ["explorer", str(target)] if target.is_dir() else ["explorer", f"/select,{target}"]
+    else:
+        cmd = ["xdg-open", str(target if target.is_dir() else target.parent)]
+    subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+@app.post("/api/outputs/reveal")
+def api_outputs_reveal(req: RevealOutputRequest):
+    """桌面端：在系统文件目录中打开 / 定位内容库资源。"""
+    rel = (req.path or "").strip().lstrip("/")
+    if not rel:
+        full = OUTPUTS_DIR.resolve()
+        OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
+    else:
+        full = _safe_output_target(rel, must_exist=True)
+    try:
+        _reveal_in_file_manager(full)
+    except OSError as e:
+        raise HTTPException(500, f'无法打开文件目录：{e}')
+    return {"ok": True, "path": rel or ".", "absPath": str(full)}
 
 
 @app.post("/api/upload")

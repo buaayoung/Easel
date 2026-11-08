@@ -11,11 +11,22 @@ from pathlib import Path
 
 from easel.openclaw_workspace import workspace_dir
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SOURCE_DIRS = ('skills/builtin', 'skills/shared')
 WORKSPACE_LINKS = {'easel-profiles': 'profiles', 'outputs': 'outputs'}
 WINDOWS = os.name == 'nt'
 _IGNORED_DIRS = {'__pycache__', '.git', '.venv', 'node_modules', '.pytest_cache'}
+
+
+def project_root() -> Path:
+    """Prefer EASEL_ROOT (Flutter/packaged sidecar) over the installed package path."""
+    raw = (os.environ.get('EASEL_ROOT') or '').strip()
+    if raw:
+        return Path(raw).expanduser().resolve()
+    return Path(__file__).resolve().parents[1]
+
+
+# Back-compat for importers / tests that read the module attribute.
+PROJECT_ROOT = project_root()
 
 
 def agent_workspace() -> Path:
@@ -51,13 +62,14 @@ def _same_file(source: Path, destination: Path) -> bool:
 
 
 def _managed_files(ws: Path):
+    root = project_root()
     boundary = ws.resolve()
     for relative in SOURCE_DIRS:
-        source = (PROJECT_ROOT / relative).resolve()
+        source = (root / relative).resolve()
         if boundary == source or source in boundary.parents:
             raise ValueError('workspace 不能位于技能源目录内部')
     for relative, name in zip(SOURCE_DIRS, ('skills', 'shared')):
-        source_root = PROJECT_ROOT / relative
+        source_root = root / relative
         if not source_root.is_dir():
             raise ValueError('仓库技能源目录不存在')
         for source in _files(source_root):
@@ -84,7 +96,7 @@ def skills_sync_state() -> tuple[bool, str]:
         for source, destination in _managed_files(ws):
             count += 1
             if not _matches(source, destination):
-                relative = source.relative_to(PROJECT_ROOT)
+                relative = source.relative_to(project_root())
                 return False, f'仓库文件 {relative} 缺失或内容不同：改了但没同步；请运行 python scripts/sync_if_stale.py'
         if not count:
             return False, '仓库技能源为空，无法确认同步状态'
@@ -99,8 +111,9 @@ def sync_needed() -> bool:
 
 def synchronize_skills() -> int:
     """Atomically replace only existing source paths; keep all user extras and memories."""
+    root = project_root()
     ws = agent_workspace()
-    if ws.resolve() == PROJECT_ROOT.resolve():
+    if ws.resolve() == root.resolve():
         raise ValueError('workspace 不能是项目根目录')
     files = list(_managed_files(ws))  # Validate every destination before writing any file.
     copied = 0
@@ -121,14 +134,88 @@ def synchronize_skills() -> int:
     return copied
 
 
+def _migrate_dir_contents(source: Path, destination: Path) -> int:
+    """Copy missing top-level entries from an old outputs/profiles tree into the new one."""
+    if not source.is_dir() or source.resolve() == destination.resolve():
+        return 0
+    moved = 0
+    for child in source.iterdir():
+        if child.name.startswith('.'):
+            continue
+        dest = destination / child.name
+        if dest.exists() or dest.is_symlink():
+            continue
+        try:
+            if child.is_dir():
+                shutil.copytree(child, dest, symlinks=True)
+            elif child.is_file():
+                shutil.copy2(child, dest)
+            else:
+                continue
+            moved += 1
+        except OSError:
+            continue
+    return moved
+
+
+def align_workspace_links() -> list[str]:
+    """Point workspace ``outputs`` / ``easel-profiles`` at this EASEL_ROOT.
+
+    Flutter 内容库读的是 ``$EASEL_ROOT/outputs``；OpenClaw agent 写的是
+    ``workspace/outputs``。若后者仍软链到旧仓库（例如迁仓后的 Easel/outputs），
+    skill 说写进了 outputs，内容库却是空的。
+    """
+    root = project_root()
+    ws = agent_workspace()
+    notes: list[str] = []
+    for name, relative in WORKSPACE_LINKS.items():
+        target = root / relative
+        try:
+            target.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            notes.append(f'{name}: 无法创建目标目录 {target}（{exc}）')
+            continue
+        target = target.resolve()
+        link = ws / name
+        try:
+            if link.is_symlink():
+                try:
+                    current = link.resolve()
+                except OSError:
+                    current = None
+                if current == target:
+                    continue
+                old = current
+                link.unlink()
+                if old is not None:
+                    migrated = _migrate_dir_contents(old, target)
+                    if migrated:
+                        notes.append(f'{name}: 已从旧目录迁入 {migrated} 项 → {target}')
+                link.symlink_to(target, target_is_directory=True)
+                notes.append(f'{name}: 已改链 → {target}')
+                continue
+            if link.exists():
+                if _same_file(link, target):
+                    continue
+                notes.append(f'{name}: 已有真实目录且与项目源不同，已保留 {link}')
+                continue
+            link.symlink_to(target, target_is_directory=True)
+            notes.append(f'{name}: 已创建链接 → {target}')
+        except OSError as exc:
+            notes.append(f'{name}: 无法对齐链接（{exc}）')
+    return notes
+
+
 def ensure_workspace_links() -> list[str]:
     """Create missing Windows junctions; never delete or replace an existing copy/link."""
     if not WINDOWS:
-        return []
+        # POSIX: repair/create symlinks so Flutter 内容库与 agent 写入口一致。
+        return align_workspace_links()
+    root = project_root()
     ws = agent_workspace()
     problems = []
     for name, relative in WORKSPACE_LINKS.items():
-        link, target = ws / name, PROJECT_ROOT / relative
+        link, target = ws / name, root / relative
         if not target.is_dir() or _same_file(link, target):
             continue
         if os.path.lexists(link):

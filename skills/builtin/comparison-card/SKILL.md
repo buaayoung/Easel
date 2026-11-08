@@ -110,6 +110,6 @@ python skills/shared/scripts/render_card.py \
 ## Profile 感知
 
 - **有 Profile**：从 `style.md` 读取品牌配色，替换模板默认色；从 `identity.md` 读取账号名作为水印；从 `platforms.md` 读取主力平台，自动匹配尺寸
-- **无 Profile**：使用默认清新风格配色，无水印，默认小红书尺寸（1080x1440）
+- **无 Profile**：使用默认清新风格配色，水印默认 **Unisyn**，默认小红书尺寸（1080x1440）
 
 > 自研溯源与参考项目见同目录 `EASEL-META.md`。

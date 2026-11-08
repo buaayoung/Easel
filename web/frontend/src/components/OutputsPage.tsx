@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import type { CSSProperties } from 'react';
-import { fetchOutputs, fetchOutputContent, mediaUrl, deleteOutput } from '../lib/api';
+import { fetchOutputs, fetchOutputContent, mediaUrl, deleteOutput, revealOutput } from '../lib/api';
 import type { OutputNode, OutputMeta } from '../lib/api';
 import { renderMarkdown } from '../lib/sanitize';
-import { IconOutputs, IconImage, IconVideo, IconMusic, IconFile, IconFolder, IconRefresh, IconChevron, IconTrash } from './icons';
+import { IconOutputs, IconImage, IconVideo, IconMusic, IconFile, IconFolder, IconFolderOpen, IconRefresh, IconChevron, IconTrash } from './icons';
 
 const FILTERS: { key: string; label: string }[] = [
   { key: 'all', label: '全部' },
@@ -140,6 +140,17 @@ export default function OutputsPage({ jumpPath, onJumpHandled }: OutputsPageProp
     }
   }, [load]);
 
+  const reveal = useCallback(async (path: string, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    try {
+      await revealOutput(path);
+    } catch (err) {
+      alert((err as Error).message || '无法打开文件目录');
+    }
+  }, []);
+
+  const currentRevealPath = stack.length === 0 ? '' : stack.join('/');
+
   const open = useCallback(async (f: OutputNode) => {
     const seq = ++reqSeq.current;
     setSelected(f); setContent('');
@@ -204,6 +215,9 @@ export default function OutputsPage({ jumpPath, onJumpHandled }: OutputsPageProp
       <div key={d.path} className="card card-hover gcard" onClick={() => enterDir(d.name)}>
         <div className="gcard-thumb">
           <span className="gcard-kind">{m?.kind ? (KIND_LABEL[m.kind] || m.kind) : '文件夹'}</span>
+          <button className="gcard-reveal" title="在文件目录打开" onClick={(e) => void reveal(d.path, e)}>
+            <IconFolderOpen size={14} />
+          </button>
           <button className="gcard-del" title="删除" onClick={(e) => remove(d, e)}><IconTrash size={14} /></button>
           {cover ? <Thumb f={cover} big /> : <div className="gcard-ph"><IconFolder size={38} /></div>}
         </div>
@@ -225,6 +239,9 @@ export default function OutputsPage({ jumpPath, onJumpHandled }: OutputsPageProp
     <div key={f.path} className="card card-hover gcard" onClick={() => open(f)}>
       <div className="gcard-thumb">
         <span className="gcard-kind">{kindLabel(f)}</span>
+        <button className="gcard-reveal" title="在文件目录打开" onClick={(e) => void reveal(f.path, e)}>
+          <IconFolderOpen size={14} />
+        </button>
         <button className="gcard-del" title="删除" onClick={(e) => remove(f, e)}><IconTrash size={14} /></button>
         <Thumb f={f} />
       </div>
@@ -258,7 +275,12 @@ export default function OutputsPage({ jumpPath, onJumpHandled }: OutputsPageProp
               : `${dirs.length} 个文件夹 · ${files.length} 个文件（可继续点开子文件夹）`}
           </p>
         </div>
-        <button className="btn btn-sm" onClick={load}><IconRefresh size={14} /> 刷新</button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn-sm" onClick={() => void reveal(currentRevealPath)} title="在文件目录打开">
+            <IconFolderOpen size={14} /> 在文件目录打开
+          </button>
+          <button className="btn btn-sm" onClick={load}><IconRefresh size={14} /> 刷新</button>
+        </div>
       </div>
 
       {treeError && <div className="notice-error">{treeError}</div>}
@@ -329,7 +351,10 @@ export default function OutputsPage({ jumpPath, onJumpHandled }: OutputsPageProp
               <button className="icon-btn" onClick={() => setSelected(null)}>×</button>
             </div>
             <div className="drawer-body">{preview()}</div>
-            <div style={{ padding: '10px 16px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end' }}>
+            <div style={{ padding: '10px 16px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button className="btn btn-sm" onClick={() => void reveal(selected.path)}>
+                <IconFolderOpen size={13} /> 在文件目录打开
+              </button>
               <button className="btn btn-sm btn-danger" onClick={(e) => remove(selected, e)}><IconTrash size={13} /> 删除此文件</button>
             </div>
           </div>

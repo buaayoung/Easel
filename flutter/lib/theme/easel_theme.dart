@@ -544,52 +544,49 @@ Widget mainContentBackground({required Widget child}) {
     child: Stack(
       fit: StackFit.expand,
       children: [
+        // Isolate expensive gradient paints from content rebuilds.
         Positioned.fill(
           child: IgnorePointer(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: RadialGradient(
-                  // circle at 23% 8%
-                  center: const Alignment(-0.54, -0.84),
-                  radius: 1.15,
-                  colors: [p.washA, p.washA.withValues(alpha: 0)],
-                  stops: p.isDark ? const [0.0, 0.36] : const [0.0, 0.32],
-                ),
-              ),
-            ),
-          ),
-        ),
-        Positioned.fill(
-          child: IgnorePointer(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: RadialGradient(
-                  // circle at 78% 12%
-                  center: const Alignment(0.56, -0.76),
-                  radius: 1.2,
-                  colors: [p.washB, p.washB.withValues(alpha: 0)],
-                  stops: p.isDark ? const [0.0, 0.38] : const [0.0, 0.34],
-                ),
-              ),
-            ),
-          ),
-        ),
-        if (p.washC != null)
-          Positioned.fill(
-            child: IgnorePointer(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: RadialGradient(
-                    // circle at 52% 92%
-                    center: const Alignment(0.04, 0.84),
-                    radius: 1.25,
-                    colors: [p.washC!, p.washC!.withValues(alpha: 0)],
-                    stops: const [0.0, 0.38],
+            child: RepaintBoundary(
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: RadialGradient(
+                        center: const Alignment(-0.54, -0.84),
+                        radius: 1.15,
+                        colors: [p.washA, p.washA.withValues(alpha: 0)],
+                        stops: p.isDark ? const [0.0, 0.36] : const [0.0, 0.32],
+                      ),
+                    ),
                   ),
-                ),
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: RadialGradient(
+                        center: const Alignment(0.56, -0.76),
+                        radius: 1.2,
+                        colors: [p.washB, p.washB.withValues(alpha: 0)],
+                        stops: p.isDark ? const [0.0, 0.38] : const [0.0, 0.34],
+                      ),
+                    ),
+                  ),
+                  if (p.washC != null)
+                    DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: RadialGradient(
+                          center: const Alignment(0.04, 0.84),
+                          radius: 1.25,
+                          colors: [p.washC!, p.washC!.withValues(alpha: 0)],
+                          stops: const [0.0, 0.38],
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
           ),
+        ),
         child,
       ],
     ),

@@ -41,15 +41,24 @@ class AppShell extends StatelessWidget {
       children: [
         Row(
           children: [
-            EaselSidebar(controller: c, theme: theme),
+            RepaintBoundary(
+              child: EaselSidebar(controller: c, theme: theme),
+            ),
             Expanded(
-              child: mainContentBackground(
-                child: Column(
-                  children: [
-                    if (_showSubNav)
-                      EaselSubNav(current: c.currentPage, onNavigate: c.setPage),
-                    Expanded(child: _page(c)),
-                  ],
+              child: RepaintBoundary(
+                child: mainContentBackground(
+                  child: Column(
+                    children: [
+                      if (_showSubNav)
+                        EaselSubNav(current: c.currentPage, onNavigate: c.setPage),
+                      Expanded(
+                        child: KeyedSubtree(
+                          key: ValueKey(c.currentPage),
+                          child: _page(c),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),

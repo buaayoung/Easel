@@ -1226,13 +1226,16 @@ textarea.field { resize: vertical; min-height: 90px; }
 .composer-attach-btn:hover:not(:disabled) { border-color: var(--accent-start); color: var(--text); background: var(--accent-soft); }
 .composer-attach-btn:disabled { opacity: 0.5; cursor: default; }
 
-/* 内容库卡片删除按钮（hover 显现） */
+/* 内容库卡片操作按钮（hover 显现） */
 .gcard-thumb { position: relative; }
-.gcard-del { position: absolute; top: 6px; right: 6px; z-index: 2; width: 26px; height: 26px;
+.gcard-del, .gcard-reveal { position: absolute; top: 6px; z-index: 2; width: 26px; height: 26px;
   display: none; align-items: center; justify-content: center; border-radius: 7px; border: none;
   background: rgba(0,0,0,0.55); color: #fff; cursor: pointer; transition: background var(--t-fast); }
-.gcard:hover .gcard-del { display: inline-flex; }
+.gcard-del { right: 6px; }
+.gcard-reveal { right: 36px; }
+.gcard:hover .gcard-del, .gcard:hover .gcard-reveal { display: inline-flex; }
 .gcard-del:hover { background: var(--red); }
+.gcard-reveal:hover { background: var(--accent-start); }
 
 /* 技能库中文展示名（中文大字 + 原名小字） */
 .skill-card-rawname { font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace; font-size: 11px; color: var(--text-tertiary); margin-top: -3px; letter-spacing: 0; }

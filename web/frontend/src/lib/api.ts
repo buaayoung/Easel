@@ -404,6 +404,11 @@ export function deleteOutput(path: string): Promise<{ ok: boolean; deleted: stri
   return request(`/api/output/${path.split('/').map(encodeURIComponent).join('/')}`, { method: 'DELETE' });
 }
 
+/** 在系统文件管理器中打开内容库路径；path 为空则打开 outputs 根目录。 */
+export function revealOutput(path = ''): Promise<{ ok: boolean; path: string; absPath: string }> {
+  return request('/api/outputs/reveal', { method: 'POST', body: JSON.stringify({ path }) });
+}
+
 export interface UploadedFile { id: string; name: string; path: string; }
 
 /** OpenClaw ask_user 问答题（SSE question 事件 payload）。 */

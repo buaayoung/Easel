@@ -28,20 +28,12 @@ class _EaselAppState extends State<EaselApp> {
   @override
   void initState() {
     super.initState();
-    _controller.addListener(_onChange);
-    _theme.addListener(_onChange);
     _controller.boot();
     _theme.load();
   }
 
-  void _onChange() {
-    if (mounted) setState(() {});
-  }
-
   @override
   void dispose() {
-    _controller.removeListener(_onChange);
-    _theme.removeListener(_onChange);
     _controller.shutdown();
     _theme.dispose();
     super.dispose();
@@ -49,35 +41,45 @@ class _EaselAppState extends State<EaselApp> {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Unisyn',
-      debugShowCheckedModeBanner: false,
-      theme: _light,
-      darkTheme: _dark,
-      themeMode: _theme.themeMode,
-      // Avoid ColorScheme lerp between light/dark mid-transition.
-      themeAnimationDuration: Duration.zero,
-      builder: (context, child) {
-        final palette = EaselPalette.of(context);
-        EaselColors.bind(palette);
-        return KeyedSubtree(
-          key: ValueKey<bool>(palette.isDark),
-          child: ColoredBox(
-            color: palette.bg,
-            child: DefaultTextStyle(
-              style: TextStyle(color: palette.text, fontSize: 14, height: 1.6),
-              child: IconTheme(
-                data: IconThemeData(color: palette.textSecondary),
-                child: child ?? const SizedBox.shrink(),
+    // Theme changes rebuild MaterialApp only; controller changes stay under home.
+    return ListenableBuilder(
+      listenable: _theme,
+      builder: (context, _) {
+        return MaterialApp(
+          title: 'Unisyn',
+          debugShowCheckedModeBanner: false,
+          theme: _light,
+          darkTheme: _dark,
+          themeMode: _theme.themeMode,
+          themeAnimationDuration: Duration.zero,
+          builder: (context, child) {
+            final palette = EaselPalette.of(context);
+            EaselColors.bind(palette);
+            return KeyedSubtree(
+              key: ValueKey<bool>(palette.isDark),
+              child: ColoredBox(
+                color: palette.bg,
+                child: DefaultTextStyle(
+                  style: TextStyle(color: palette.text, fontSize: 14, height: 1.6),
+                  child: IconTheme(
+                    data: IconThemeData(color: palette.textSecondary),
+                    child: child ?? const SizedBox.shrink(),
+                  ),
+                ),
               ),
-            ),
+            );
+          },
+          home: ListenableBuilder(
+            listenable: _controller,
+            builder: (context, _) {
+              return Scaffold(
+                backgroundColor: Colors.transparent,
+                body: _body(),
+              );
+            },
           ),
         );
       },
-      home: Scaffold(
-        backgroundColor: Colors.transparent,
-        body: _body(),
-      ),
     );
   }
 

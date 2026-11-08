@@ -1,21 +1,42 @@
+class ChatAttachment {
+  const ChatAttachment({required this.id, required this.name, required this.path});
+
+  final String id;
+  final String name;
+  final String path;
+
+  Map<String, dynamic> toJson() => {'id': id, 'name': name, 'path': path};
+
+  factory ChatAttachment.fromJson(Map<String, dynamic> j) => ChatAttachment(
+        id: '${j['id'] ?? ''}',
+        name: '${j['name'] ?? ''}',
+        path: '${j['path'] ?? ''}',
+      );
+}
+
 class ChatMessage {
   ChatMessage({
     required this.role,
     required this.content,
     this.thinking,
     this.activity,
+    this.attachments,
   });
 
   final String role; // user | assistant
   String content;
   String? thinking;
   String? activity;
+  /// Structured attachment refs (request/retry only; bubble shows user text).
+  List<ChatAttachment>? attachments;
 
   Map<String, dynamic> toJson() => {
         'role': role,
         'content': content,
         if (thinking != null) 'thinking': thinking,
         if (activity != null) 'activity': activity,
+        if (attachments != null && attachments!.isNotEmpty)
+          'attachments': attachments!.map((a) => a.toJson()).toList(),
       };
 
   factory ChatMessage.fromJson(Map<String, dynamic> j) => ChatMessage(
@@ -23,6 +44,10 @@ class ChatMessage {
         content: '${j['content'] ?? ''}',
         thinking: j['thinking']?.toString(),
         activity: j['activity']?.toString(),
+        attachments: (j['attachments'] as List?)
+            ?.whereType<Map>()
+            .map((e) => ChatAttachment.fromJson(Map<String, dynamic>.from(e)))
+            .toList(),
       );
 }
 

@@ -1,4 +1,5 @@
-import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart';
+import 'package:flutter/widgets.dart';
 
 import '../api/easel_api.dart';
 import '../models/chat_session.dart';
@@ -28,6 +29,22 @@ class AppController extends ChangeNotifier {
   bool modelConfigured = true;
   StreamState? stream;
   Future<void> Function()? _cancelStream;
+
+  /// Chat page listens to this for token/thinking ticks — avoids rebuilding sidebar.
+  final ChangeNotifier streamListenable = ChangeNotifier();
+
+  /// Coalesce high-frequency stream token notifies into one rebuild per frame.
+  bool _streamNotifyScheduled = false;
+
+  void _notifyStreamFrame() {
+    if (_streamNotifyScheduled) return;
+    _streamNotifyScheduled = true;
+    SchedulerBinding.instance.scheduleFrameCallback((_) {
+      _streamNotifyScheduled = false;
+      // ignore: invalid_use_of_protected_member, invalid_use_of_visible_for_testing_member
+      streamListenable.notifyListeners();
+    });
+  }
 
   ChatSession? get activeSession {
     final id = activeSessionId;
@@ -87,7 +104,6 @@ class AppController extends ChangeNotifier {
     try {
       final boot = await a.bootstrap();
       modelConfigured = boot['modelConfigured'] == true;
-      if (!modelConfigured) settingsOpen = true;
     } catch (_) {}
   }
 
@@ -245,15 +261,26 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> sendChat(String text) async {
+  Future<void> sendChat(
+    String text, {
+    List<ChatAttachment> attachments = const [],
+  }) async {
     final a = api;
     final session = activeSession;
     if (a == null || session == null || stream != null) return;
     final msg = text.trim();
-    if (msg.isEmpty) return;
+    if (msg.isEmpty && attachments.isEmpty) return;
 
-    session.messages.add(ChatMessage(role: 'user', content: msg));
-    if (session.title == '新对话') session.title = titleFromMessage(msg);
+    session.messages.add(ChatMessage(
+      role: 'user',
+      content: msg,
+      attachments: attachments.isEmpty ? null : List.of(attachments),
+    ));
+    if (session.title == '新对话') {
+      session.title = titleFromMessage(
+        msg.isNotEmpty ? msg : (attachments.isNotEmpty ? attachments.first.name : '新对话'),
+      );
+    }
     stream = StreamState();
     notifyListeners();
     await _persist();
@@ -266,17 +293,21 @@ class AppController extends ChangeNotifier {
       sessionId: session.id,
       persona: session.persona ?? selectedPersona,
       turnId: turnId,
+      attachments: [
+        for (final x in attachments)
+          UploadedFile(id: x.id, name: x.name, path: x.path),
+      ],
       onToken: (c) {
         stream?.content = '${stream?.content ?? ''}$c';
-        notifyListeners();
+        _notifyStreamFrame();
       },
       onThinking: (c) {
         stream?.thinking = '${stream?.thinking ?? ''}$c';
-        notifyListeners();
+        _notifyStreamFrame();
       },
       onActivity: (s) {
         stream?.activity = s;
-        notifyListeners();
+        _notifyStreamFrame();
       },
       onDone: (key) {
         final content = stream?.content ?? '';
